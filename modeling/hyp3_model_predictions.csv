@@ -1,0 +1,4 @@
+known,structure,utterance,valence,blue,red,response
+none,conjunctive,blue,unpleasant,0.18242552380635635,0.8175744761936437,4
+none,conjunctive,blue,neutral,0.3775406687981454,0.6224593312018546,4
+none,conjunctive,blue,pleasant,0.6224593312018546,0.3775406687981454,6

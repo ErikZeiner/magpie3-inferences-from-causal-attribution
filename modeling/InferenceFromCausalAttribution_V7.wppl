@@ -1,0 +1,223 @@
+// in CLI run with --require webppl-fs --require webppl-csv --require webppl-json
+
+// Cumulative logit function
+var logisticFun = function (x) {
+    return 1 / (1 + Math.exp(-x))
+}
+
+var cumulativeLogitFun = function (x, j, thresholds) {
+    if (j == 0) {
+        return logisticFun(thresholds[0] - x)
+    }
+    if (j == thresholds.length) {
+        return 1 - logisticFun(thresholds[thresholds.length - 1] - x)
+    } else {
+        return logisticFun(thresholds[j] - x) - logisticFun(thresholds[j - 1] - x)
+    }
+}
+
+// constant values
+//var thresholds = [1 / 7, 2 / 7, 3 / 7, 4 / 7, 5 / 7, 6 / 7]
+var thresholds = [-3.5 ,-2.5, -1.5, -0.5, 0.5, 1.5]
+//var thresholds = [-3, -2, -0.5, 0, 0.5, 2]
+
+var likertScale = ['1', '2', '3', '4', '5', '6', '7']
+
+// input values
+var utterances = {'blue': 1, 'red': -1}
+var structures = {'conjunctive': -1, 'disjunctive': 1}
+var norms = {'blue': 1, 'none': 0, 'red': -1}
+var valences = {'pleasant': 1, 'neutral': 0, 'unpleasant': -1}
+
+// utility components
+
+var utilityKnown = function (known, structure, utterance) {
+    return known * utterance
+}
+
+var utilityPrivate = function (private, structure, utterance) {
+    return (1 + structure * private * utterance) / 2
+}
+
+var utilityValence = function (known, private, utterance, valence) {
+    return known*utterance*valence + private*utterance*valence
+}
+
+// Utility function
+var utilityTotal = function (known, private, structure, utterance, valence, alpha, beta, gamma) {
+    return alpha * utilityPrivate(private,structure,utterance)
+    + beta * utilityKnown(known,structure, utterance)
+    + gamma * utilityValence(known,private,utterance,valence)
+}
+
+// speaker function
+var speaker = function (known, private, structure, valence, alpha, beta, gamma, lambda) {
+    Infer({
+        model: function () {
+            var utterance = uniformDraw(Object.keys(utterances))
+            factor(lambda * utilityTotal(known, private, structure, utterances[utterance], valence, alpha, beta, gamma))
+            return utterance
+        }
+    })
+}
+
+// listener function
+var listener = function (known, structure, utterance, valence, alpha, beta, gamma, lambda) {
+    Infer({
+        model: function () {
+            var private = uniformDraw(['blue', 'red'])
+            observe(speaker(norms[known], norms[private], structures[structure], valences[valence], alpha, beta, gamma, lambda), utterance)
+            return private
+        }
+    })
+}
+
+var listenerWrapped = function (known, structure, utterance, valence, alpha, beta, gamma, lambda) {
+    var infer = listener(known, structure, utterance, valence, alpha, beta, gamma, lambda)
+    var blueProb = Math.exp(infer.score('blue'))
+    var redProb = Math.exp(infer.score('red'))
+
+    var notUttered = utterance == 'blue' ? 'red' : 'blue'
+    var probs = map(function (j) {
+            return cumulativeLogitFun(infer.score(notUttered), j, thresholds)
+        },
+        _.range(0, 7))
+//  console.log(probs)
+    var response = categorical({vs: likertScale, ps: probs})
+    return known + ',' + structure + ',' + utterance + ',' + valence + ',' + blueProb.toString() + ',' + redProb.toString() + ',' + response.toString() + '\n'
+
+}
+
+// simulation
+var header = 'known' + ',' + 'structure' + ',' + 'utterance' + ',' + 'valence' + ',' + 'blue' + ',' + 'red' +','+  'response' + '\n'
+
+var SIMULATE = function (knownExists, alpha, beta, gamma, lambda) {
+    if(knownExists==false){
+        var array = map(function(i){ 
+            return listenerWrapped('none', 'conjunctive', 'blue', 'pleasant', alpha, beta, gamma, lambda) +
+            listenerWrapped('none', 'conjunctive', 'blue', 'neutral', alpha, beta, gamma, lambda) +
+            listenerWrapped('none', 'conjunctive', 'blue', 'unpleasant', alpha, beta, gamma, lambda) +
+            listenerWrapped('none', 'disjunctive', 'blue', 'pleasant', alpha, beta, gamma, lambda) +
+            listenerWrapped('none', 'disjunctive', 'blue', 'neutral', alpha, beta, gamma, lambda) +
+            listenerWrapped('none', 'disjunctive', 'blue', 'unpleasant', alpha, beta, gamma, lambda)
+        }, _.range(0,50))
+      fs.write('simulation_output_experiments_1_2.csv', header + array.join(''))
+    }
+    else{
+        var array = map(function(i){ 
+            return listenerWrapped('blue', 'conjunctive', 'blue', 'pleasant', alpha, beta, gamma, lambda) +
+            listenerWrapped('blue', 'conjunctive', 'blue', 'neutral', alpha, beta, gamma, lambda) +
+            listenerWrapped('blue', 'conjunctive', 'blue', 'unpleasant', alpha, beta, gamma, lambda) +
+            listenerWrapped('blue', 'disjunctive', 'blue', 'pleasant', alpha, beta, gamma, lambda) +
+            listenerWrapped('blue', 'disjunctive', 'blue', 'neutral', alpha, beta, gamma, lambda) +
+            listenerWrapped('blue', 'disjunctive', 'blue', 'unpleasant', alpha, beta, gamma, lambda) +
+            listenerWrapped('red', 'conjunctive', 'blue', 'pleasant', alpha, beta, gamma, lambda) +
+            listenerWrapped('red', 'conjunctive', 'blue', 'neutral', alpha, beta, gamma, lambda) +
+            listenerWrapped('red', 'conjunctive', 'blue', 'unpleasant', alpha, beta, gamma, lambda) +
+            listenerWrapped('red', 'disjunctive', 'blue', 'pleasant', alpha, beta, gamma, lambda) +
+            listenerWrapped('red', 'disjunctive', 'blue', 'neutral', alpha, beta, gamma, lambda) +
+            listenerWrapped('red', 'disjunctive', 'blue', 'unpleasant', alpha, beta, gamma, lambda)
+        }, _.range(0,50))
+      fs.write('simulation_output_experiments_3.csv', header + array.join(''))
+    }
+}
+
+var parameterSampling = function (data, knownExists) {
+    // knownExists basically differentiates Exp3 from Exp1
+    
+    var alpha = uniform({a: -1, b: 1})
+    var beta = uniform({a: -1, b: 1})
+    var gamma = uniform({a: -1, b: 1})
+    var lambda = uniform({a: 0, b: 20})
+
+    map(function (row) {
+        var utterance = row[1]
+        var valence = row[2]
+        var structure = row[3]
+        var response = row[4]
+
+        var notUttered = utterance == 'blue' ? 'red' : 'blue'
+        var known = knownExists == true ? (row[6] == 'Statistically normal' ? utterance : notUttered) : 'none'
+        console.log(row.length)
+        var listenerPredictions = listener(known, structure, utterance, valence, alpha, beta, gamma, lambda)
+
+        var probs = map(function (j) {
+                return cumulativeLogitFun(listenerPredictions.score(notUttered), j, thresholds)
+            },
+            _.range(0, 7))
+        observe(Categorical({vs: likertScale, ps: probs}), response)
+    }, data)
+
+    return {alpha: alpha, beta: beta, gamma: gamma, lambda: lambda}
+}
+
+var ESTIMATE = function (data, knownExists) {
+    var infer = Infer({
+        method: "MCMC",
+        samples: 10000,
+        burn: 5000,
+        model: function () {
+            return parameterSampling(data, knownExists)
+        }
+    })
+    return infer
+}
+
+var dataExp1 = csv.read('../01-experiments/01-exp-descrNormInference/data/01-pilot/01-data-processed-pilot-01.csv').slice(1, -1)
+var dataExp2Pilot1 = csv.read('../01-experiments/02-exp-statNormInference/data/01-data-processed-exp-02.csv').slice(1, -1)
+var dataExp2Pilot2 = csv.read('../01-experiments/02-exp-statNormInference/data/02-data-processed-exp-02.csv').slice(1, -1)
+var dataExp3 = csv.read('../01-experiments/03-exp-prescrNormInferenceBiased/data/01-data-processed-exp-03.csv').slice(1, -1)
+
+// Example model predictions
+var alpha = 0.5
+var beta = 0.5
+var gamma = 0.5
+var lambda = 1
+
+//
+//
+//// hypotheses 1 + 2
+//fs.write('hyp12_model_predictions.csv',header+
+//  listenerWrapped('none', 'conjunctive', 'blue', 'neutral', alpha, beta, gamma, lambda)+
+//  listenerWrapped('none', 'disjunctive', 'blue', 'neutral', alpha, beta, gamma, lambda)
+//)
+//
+////hypothesis 3
+//fs.write('hyp3_model_predictions.csv',header+
+//  listenerWrapped('none', 'conjunctive', 'blue', 'unpleasant', alpha, beta, gamma, lambda)+
+//  listenerWrapped('none', 'conjunctive', 'blue', 'neutral', alpha, beta, gamma, lambda)+
+//  listenerWrapped('none', 'conjunctive', 'blue', 'pleasant', alpha, beta, gamma, lambda)
+//)
+//
+//
+////hypothesis 4
+//fs.write('hyp4_model_predictions.csv',header+
+//  listenerWrapped('blue', 'disjunctive', 'blue', 'neutral', alpha, beta, gamma, lambda)+
+//  listenerWrapped('red', 'disjunctive', 'blue', 'neutral', alpha, beta, gamma, lambda)
+//)
+//
+
+//Posterior predictions
+//var test = ESTIMATE(dataExp3, true)
+//json.write('parameters_posterior.json', test.samples)
+//console.log(test.samples)
+//
+
+// Simulated data
+        
+//var est = MAP(ESTIMATE(dataExp1, false))['val']
+//console.log(est)
+//var est = MAP(ESTIMATE(dataExp2Pilot1, false))['val']
+//console.log(est)
+//var est = MAP(ESTIMATE(dataExp2Pilot2, false))['val']
+//var est = MAP(ESTIMATE(dataExp3, true))['val']
+//var est = {alpha: 0,beta: 0,gamma: 1,lambda: 1}
+//console.log(est)
+
+
+SIMULATE(true, 0.8183466, -0.9301801, 0.8996573, 1.479221)
+//SIMULATE(false, est['alpha'], est['beta'], est['gamma'], est['lambda'])
+//SIMULATE(true, est['alpha'], est['beta'], est['gamma'], est['lambda'])
+        
+        
+        

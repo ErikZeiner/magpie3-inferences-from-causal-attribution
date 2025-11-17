@@ -1,0 +1,27 @@
+
+var logisticFun = function(x){
+  return 1/(1+Math.exp(-x))
+}
+
+//tests
+console.log(logisticFun(-5))
+console.log(logisticFun(0))
+console.log(logisticFun(5))
+
+
+var cumulativeLogitFun = function(x,j,thresholds){
+  if (j == 1){
+    return logisticFun(thresholds[j-1]-x)
+  }
+  else{
+    return logisticFun(thresholds[j-1]-x) - cumulativeLogitFun(x,j-1,thresholds)
+  }
+}
+
+
+var thresholds = [-0.75, 1.6]
+
+//tests
+console.log(cumulativeLogitFun(0,1,thresholds))
+console.log(cumulativeLogitFun(0,2,thresholds))
+console.log(cumulativeLogitFun(0,3,thresholds))

@@ -1,0 +1,237 @@
+// in CLI run with --require webppl-fs --require webppl-csv
+
+// Cumulative logit function
+var logisticFun = function (x) {
+    return 1 / (1 + Math.exp(-x))
+}
+
+var cumulativeLogitFun = function (x, j, thresholds) {
+    if (j == 0) {
+        return logisticFun(thresholds[0] - x)
+    }
+    if (j == thresholds.length) {
+        return 1 - logisticFun(thresholds[thresholds.length - 1] - x)
+    } else {
+        return logisticFun(thresholds[j] - x) - logisticFun(thresholds[j - 1] - x)
+    }
+}
+
+// constant values
+//var thresholds = [1 / 7, 2 / 7, 3 / 7, 4 / 7, 5 / 7, 6 / 7]
+var thresholds = [-5, -3, -1, 0, 1, 3]
+
+
+var likertScale = ['1', '2', '3', '4', '5', '6', '7']
+
+// input values
+var utterances = {'blue': 1, 'red': -1}
+var structures = {'conjunctive': -1, 'disjunctive': 1}
+var norms = {'blue': 1, 'none': 0, 'red': -1}
+//var presNorms = {'blue': {'value': 1, 'norm': 'pres'}, 'none': {'value': 0, 'norm': 'pres'}, 'red': {'value': -1, 'norm': 'pres'}}
+//var statNorms = {'blue': {'value': 1, 'norm': 'stat'}, 'none': {'value': 0, 'norm': 'stat'}, 'red': {'value': -1, 'norm': 'stat'}}
+var valences = {'pleasant': 1, 'neutral': 0, 'unpleasant': -1}
+
+
+// Utility components
+
+var utilityKnown = function (known, structure, utterance, gamma) {
+    return Math.abs(known * (1 + structure * known * utterance) / 2) - structure * known * utterance * gamma
+}
+
+var utilityPrivate = function (private, structure, utterance, delta) {
+    return Math.abs((1 + structure * private * utterance) / 2) - structure * private * utterance * delta
+}
+
+var utilityValence = function (known, private, utterance, valence) {
+    return 0.5 + valence * (utterance * known + utterance * private) / 4
+}
+
+// Utility function
+var utilityTotal = function (known, private, structure, utterance, valence, alpha, beta, gamma, delta) {
+    return alpha * utilityKnown(known, structure, utterance, gamma)
+        + beta * utilityPrivate(private, structure, utterance, delta)
+        + (10 - alpha - beta) * utilityValence(known, private, utterance, valence)
+}
+
+// speaker function
+var speaker = function (known, private, structure, valence, alpha, beta, gamma, delta, lambda) {
+    Infer({
+        model: function () {
+            var utterance = uniformDraw(Object.keys(utterances))
+            factor(lambda * utilityTotal(known, private, structure, utterances[utterance], valence, alpha, beta, gamma, delta))
+            return utterance
+        }
+    })
+}
+
+// listener function
+var listener = function (known, structure, utterance, valence, alpha, beta, gamma, delta, lambda) {
+    Infer({
+        model: function () {
+            var private = uniformDraw(['blue', 'red'])
+            observe(speaker(norms[known], norms[private], structures[structure], valences[valence], alpha, beta, gamma, delta, lambda), utterance)
+            return private
+        }
+    })
+}
+
+var listenerWrapped = function (known, structure, utterance, valence, alpha, beta, gamma, delta, lambda) {
+//var a = 2.08
+//var b = 1.82
+//var g = 0.24
+//var d = 0.25
+//var l = 1.25
+//  var a = 5.5
+//  var b = 1.29
+//  var g = 0.21
+//  var d = 0.47
+//  var l = 4.02
+    var infer = listener(known, structure, utterance, valence, alpha, beta, gamma, delta, lambda)
+    var blueProb = Math.exp(infer.score('blue'))
+    var redProb = Math.exp(infer.score('red'))
+
+    var notUttered = utterance == 'blue' ? 'red' : 'blue'
+    var probs = map(function (j) {
+            return cumulativeLogitFun(infer.score(notUttered), j, thresholds)
+        },
+        _.range(0, 7))
+    //    console.log(probs)
+    var response = categorical({vs: likertScale, ps: probs})
+    return known + ',' + structure + ',' + utterance + ',' + valence + ',' + blueProb.toString() + ',' + redProb.toString() + ',' + response.toString() + '\n'
+
+}
+
+//var sample = listener('none', 'conjunctive', 'blue', 'neutral', 3, 3, 0.3, 0.3, 1)
+//console.log(Math.exp(sample.score('red')))
+
+//Simulation
+
+
+var SIMULATE = function (knownExists, alpha, beta, gamma, delta, lambda) {
+    var header = 'known' + ',' + 'structure' + ',' + 'utterance' + ',' + 'valence' + ',' + 'blue' + ',' + 'red' +','+  'response' + '\n'
+
+    if(knownExists==false){
+        console.log('Experiments 1 and 2')
+        
+        var array = map(function(i){ 
+            return listenerWrapped('none', 'conjunctive', 'blue', 'pleasant', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('none', 'conjunctive', 'blue', 'neutral', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('none', 'conjunctive', 'blue', 'unpleasant', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('none', 'disjunctive', 'blue', 'pleasant', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('none', 'disjunctive', 'blue', 'neutral', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('none', 'disjunctive', 'blue', 'unpleasant', alpha, beta, gamma, delta, lambda)
+        
+        }, _.range(0,50))
+    
+        var data1 = header + array.join('')
+        
+        console.log(data1)
+        fs.write('simulation_output_experiments_1_2.csv', data1)
+    }else{
+        console.log('Experiment 3')
+        
+        var array = map(function(i){ 
+            return listenerWrapped('blue', 'conjunctive', 'blue', 'pleasant', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('blue', 'conjunctive', 'blue', 'neutral', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('blue', 'conjunctive', 'blue', 'unpleasant', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('blue', 'disjunctive', 'blue', 'pleasant', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('blue', 'disjunctive', 'blue', 'neutral', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('blue', 'disjunctive', 'blue', 'unpleasant', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('red', 'conjunctive', 'blue', 'pleasant', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('red', 'conjunctive', 'blue', 'neutral', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('red', 'conjunctive', 'blue', 'unpleasant', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('red', 'disjunctive', 'blue', 'pleasant', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('red', 'disjunctive', 'blue', 'neutral', alpha, beta, gamma, delta, lambda) +
+            listenerWrapped('red', 'disjunctive', 'blue', 'unpleasant', alpha, beta, gamma, delta, lambda)
+        }, _.range(0,50))
+        
+        
+        var data2 = header + array.join('')
+        
+        
+        console.log(data2)
+        fs.write('simulation_output_experiments_3.csv', data2)
+    }
+}
+
+
+var parameterSampling = function (data, knownExists) {
+    // knownExists basically differentiates Exp3 from Exp1
+
+    var alpha = uniform({a: 0, b: 10})
+    var beta = uniform({a: 0, b: 10 - alpha})
+//  var alpha = 3.3
+//  var beta = 3.3
+    var gamma = uniform({a: 0, b: 1})
+    var delta = uniform({a: 0, b: 1})
+    var lambda = uniform({a: 0, b: 20})
+
+//  var cleanedData = data.filter(function(row) {
+//    return row.length > 1
+//  })
+
+    map(function (row) {
+
+        var utterance = row[1]
+        var valence = row[2]
+        var structure = row[3]
+        var response = row[4]
+
+        var notUttered = utterance == 'blue' ? 'red' : 'blue'
+
+        var known = knownExists == true ? (row[5] == 'Statistically normal' ? utterance : notUttered) : 'none'
+
+        var listenerPredictions = listener(known, structure, utterance, valence, alpha, beta, gamma, delta, lambda)
+//    console.log(Math.exp(listenerPredictions.score('blue')))
+//    console.log(Math.exp(listenerPredictions.score('red')))
+        // here I need to convert from the one of interest that can be either --- depends on utterance????? --- to the likert scale predictions
+        // listener predictions either blue or red that is input to sample with cumulative log probs
+
+
+        var probs = map(function (j) {
+                return cumulativeLogitFun(listenerPredictions.score(notUttered), j, thresholds)
+            },
+            _.range(0, 7))
+//    console.log(probs)
+        observe(Categorical({vs: likertScale, ps: probs}), response)
+    }, data)
+
+    return {alpha: alpha, beta: beta, gamma: gamma, delta: delta, lambda: lambda}
+}
+
+var ESTIMATE = function (data, knownExists) {
+    var infer = Infer({
+        method: "MCMC",
+        samples: 10000,
+        burn: 5000,
+        model: function () {
+            return parameterSampling(dataExp3, true)
+        }
+    })
+    return MAP(infer)
+}
+
+
+var dataExp1 = csv.read('../01-experiments/01-exp-descrNormInference/data/01-pilot/01-data-processed-pilot-01.csv').slice(1, -1)
+var dataExp2Pilot1 = csv.read('../01-experiments/02-exp-statNormInference/data/01-data-processed-exp-02.csv').slice(1, -1)
+var dataExp2Pilot2 = csv.read('../01-experiments/02-exp-statNormInference/data/02-data-processed-exp-02.csv').slice(1, -1)
+var dataExp3 = csv.read('../01-experiments/03-exp-prescrNormInferenceBiased/data/01-data-processed-exp-03.csv').slice(1, -1)
+
+var headerReference1 = csv.read('../01-experiments/01-exp-descrNormInference/data/01-pilot/01-data-processed-pilot-01.csv').shift()
+var headerReference2 = csv.read('../01-experiments/03-exp-prescrNormInferenceBiased/data/01-data-processed-exp-03.csv').shift()
+
+
+//SIMULATE()
+
+var est = ESTIMATE(dataExp1, false)['val']
+//var est = ESTIMATE(dataExp2Pilot1, false)['val']
+//var est = ESTIMATE(dataExp2Pilot2, false)['val']
+//var est = ESTIMATE(dataExp3, true)['val']
+//console.log(est)
+
+//var est = {alpha: 7.2087621976200005,beta: 0.4824842059275937,gamma: 0.30845209375756866,delta: 0.17286987685020805,lambda: 6.011462140809676}
+
+SIMULATE(false, est['alpha'], est['beta'], est['gamma'], est['delta'], est['lambda'])
+//SIMULATE(true, est['alpha'], est['beta'], est['gamma'], est['delta'], est['lambda'])
+//SIMULATE(false, 0,3,0.35,0.35,1)
+
