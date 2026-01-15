@@ -106,11 +106,11 @@ df <- df1 %>%
   filter(compCorrect)
 
 df1 %>%
-  select(prolific_pid,comp1_1Correct, comp1_2Correct, comp2Correct, comp3Correct, compCorrect)%>%
+  select(prolific_pid, comp1_1Correct, comp1_2Correct, comp2Correct, comp3Correct, compCorrect) %>%
   group_by(prolific_pid) %>%
   summarise(across(everything(), first)) %>%
   select(-prolific_pid) %>%
-  mutate(participantID = row_number(), .before = 1)%>%
+  mutate(participantID = row_number(), .before = 1) %>%
   kable(format = 'markdown')
 
 
@@ -138,7 +138,9 @@ df_speaker_key_trials <- df_speaker_key_trials %>%
       stat_norm == "blue" & grepl("left", response_map, ignore.case = TRUE) ~ "normal",
       stat_norm == "red" & grepl("right", response_map, ignore.case = TRUE) ~ "normal",
       TRUE ~ "abnormal")
-  )
+  ) %>%
+  mutate(religion = ifelse(grepl('relig_1', response_map), 'Rel 1 (red bad)', 'Rel 2 (blue bad)')) %>%
+  mutate(cause = ifelse(grepl('left', response_map), 'blue', 'red'))
 
 df_listener <- df %>%
   filter(trial_type == 'critical-listener') %>%
@@ -167,34 +169,104 @@ df_listener_key_trials %>%
 # effect_valence, mechanism, presc_normality, stat_normality -> speaker_likelihood
 dodgewidth <- .3
 
-exp3_speaker <- df_speaker_key_trials %>%
-  ggplot(aes(x = presc_normality, y = speaker_likelihood, color = stat_normality, shape = stat_normality)) +
-  facet_grid(mechanism ~ factor(effect_valence, levels = c('pleasant', 'neutral', 'unpleasant'))) +
-  stat_summary(fun = 'mean', position = position_dodge(width = dodgewidth)) +
-  stat_summary(fun = 'mean', geom = 'line', aes(group = stat_normality),
-               position = position_dodge(width = dodgewidth)) +
-  stat_summary(fun.data = 'mean_se', position = position_dodge(width = dodgewidth)) +
-  geom_jitter(aes(color = stat_normality, shape = stat_normality), position = position_jitterdodge(jitter.width = 0.05, jitter.height = .2, dodge.width = dodgewidth), alpha = .4, size = 2) +
-  scale_y_continuous(breaks = 1:7) +
-  coord_cartesian(ylim = c(1, 7)) +
-  labs(x = 'Prescriptive normality', y = 'Assigned likelihood that the speaker would say this', color = 'Statistical norm') +
-  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
-  theme_classic()
-exp3_speaker
-ggsave("01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_speaker.png", plot = exp3_speaker, width = 6, height = 6, dpi = 150)
 
-exp3_listener <- df_listener_key_trials %>%
-  ggplot(aes(x = mechanism, response)) +
-  facet_grid(~factor(effect_valence, levels = c('pleasant', 'neutral', 'unpleasant'))) +
-  # stat_summary(fun='mean', position=position_dodge(width=dodgewidth))+
-  # stat_summary(fun='mean', geom='line', aes(group=stat_normality),
-  #              position=position_dodge(width=dodgewidth))+
-  # stat_summary(fun.data='mean_se', position=position_dodge(width=dodgewidth))+
-  geom_jitter(aes(color = stat_normality), position = position_jitterdodge(jitter.width = 0.05, jitter.height = .2, dodge.width = dodgewidth), size = 2) +
+plot_speaker <- function(speaker_trials) {
+  plot <- speaker_trials %>%
+    ggplot(aes(x = presc_normality, y = speaker_likelihood, color = stat_normality, shape = stat_normality)) +
+    facet_grid(mechanism ~ factor(effect_valence, levels = c('pleasant', 'neutral', 'unpleasant'))) +
+    stat_summary(fun = 'mean', position = position_dodge(width = dodgewidth)) +
+    stat_summary(fun = 'mean', geom = 'line', aes(group = stat_normality),
+                 position = position_dodge(width = dodgewidth)) +
+    stat_summary(fun.data = 'mean_se', position = position_dodge(width = dodgewidth)) +
+    geom_jitter(aes(color = stat_normality, shape = stat_normality), position = position_jitterdodge(jitter.width = 0.05, jitter.height = .2, dodge.width = dodgewidth), alpha = .4, size = 2) +
+    scale_y_continuous(breaks = 1:7) +
+    coord_cartesian(ylim = c(1, 7)) +
+    labs(x = 'Prescriptive normality', y = 'Assigned likelihood that the speaker would say this') +
+    geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+    theme_classic()
+  return(plot)
+}
+
+exp3_speaker <- plot_speaker(df_speaker_key_trials)
+exp3_speaker
+# ggsave("01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_speaker.png", plot = exp3_speaker, width = 6, height = 6, dpi = 150)
+
+
+plot_listener <- function(listener_trials) {
+  plot <- listener_trials %>%
+    ggplot(aes(x = mechanism, response, color = stat_normality, shape = stat_normality)) +
+    facet_grid(~factor(effect_valence, levels = c('pleasant', 'neutral', 'unpleasant'))) +
+    stat_summary(fun = 'mean', position = position_dodge(width = dodgewidth)) +
+    stat_summary(fun = 'mean', geom = 'line', aes(group = stat_normality),
+                 position = position_dodge(width = dodgewidth)) +
+    stat_summary(fun.data = 'mean_se', position = position_dodge(width = dodgewidth)) +
+    geom_jitter(aes(color = stat_normality), position = position_jitterdodge(jitter.width = 0.05, jitter.height = .2, dodge.width = dodgewidth), alpha = .4) +
+    scale_y_continuous(breaks = 1:7) +
+    coord_cartesian(ylim = c(1, 7)) +
+    labs(x = 'Prescriptive normality', y = 'Inference that cause is (prescriptive) norm-violating') +
+    geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+    theme_classic()
+  return(plot)
+}
+
+exp3_listener <- plot_listener(df_listener_key_trials)
+exp3_listener
+# ggsave("01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_listener.png", plot = exp3_listener, width = 6, height = 6, dpi = 150)
+
+# Generate predictions
+get_speaker_samples <- function(presc_normality, stat_normality, mechanism, valence, mean, sd, size = 50) {
+  scale <- 1:7
+  probs <- dnorm(scale, mean = mean, sd = sd)
+  probs <- probs / sum(probs)
+  df <- data.frame(
+    speaker_likelihood = sample(scale, size = size, replace = TRUE, prob = probs),
+    presc_normality = rep(presc_normality, size),
+    stat_normality = rep(stat_normality, size),
+    effect_valence = rep(valence, size),
+    mechanism = rep(mechanism, size)
+  )
+  return(df)
+}
+
+
+get_listener_samples <- function(stat_normality, mechanism, valence, mean, sd, size = 50) {
+  scale <- 1:7
+  probs <- dnorm(scale, mean = mean, sd = sd)
+  probs <- probs / sum(probs)
+  df <- data.frame(
+    response = sample(scale, size = size, replace = TRUE, prob = probs),
+    effect_valence = rep(valence, size),
+    stat_normality = rep(stat_normality, size),
+    mechanism = rep(mechanism, size)
+  )
+  return(df)
+}
+
+set.seed(864529)
+
+speaker_conditions <- read.csv('01-experiments/03-phase-speaker-and-listener-oriented/03-exp-prescrStatisNorm-speakerListener/02 analysis/speaker_conditions_pilot01.csv', stringsAsFactors = FALSE)
+listener_conditions <- read.csv('01-experiments/03-phase-speaker-and-listener-oriented/03-exp-prescrStatisNorm-speakerListener/02 analysis/listener_conditions_pilot01.csv', stringsAsFactors = FALSE)
+
+
+df_speaker_hypo_trials <- do.call(rbind, apply(speaker_conditions, 1, function(row) {
+  get_speaker_samples(row["presc_normality"], row["stat_normality"], row["mechanism"], row["valence"], as.numeric(row["mean"]), as.numeric(row["sd"]))
+}))
+plot_speaker(df_speaker_hypo_trials)
+ggsave("01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_hypo_speaker.png", plot = plot_speaker(df_speaker_hypo_trials), width = 6, height = 6, dpi = 300)
+
+df_listener_hypo_trials <- do.call(rbind, apply(listener_conditions, 1, function(row) {
+  get_listener_samples(row["stat_normality"], row["mechanism"], row["valence"], as.numeric(row["mean"]), as.numeric(row["sd"]))
+}))
+plot_listener(df_listener_hypo_trials)
+ggsave("01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_hypo_listener.png", plot = plot_listener(df_listener_hypo_trials), width = 6, height = 6, dpi = 300)
+
+per_speaker <- df_speaker_key_trials %>%
+  ggplot(aes(x = religion, y = speaker_likelihood, color = cause, shape = interaction(stat_normality,mechanism, effect_valence))) +
+  geom_jitter(size = 3, width = 0.2, height = 0.2)+
   scale_y_continuous(breaks = 1:7) +
   coord_cartesian(ylim = c(1, 7)) +
-  labs(x = 'Prescriptive normality', y = 'Inference that cause is (prescriptive) norm-violating', color = 'Statistical norm') +
   geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  facet_wrap(~prolific_pid) +
   theme_classic()
-exp3_listener
-ggsave("01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_listener.png", plot = exp3_listener, width = 6, height = 6, dpi = 150)
+per_speaker
+ggsave("01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_per_speaker.png", plot = per_speaker, width = 10, height = 10, dpi = 300)

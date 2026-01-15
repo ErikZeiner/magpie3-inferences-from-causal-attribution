@@ -118,7 +118,9 @@ df_speaker_key_trials <- df_speaker_key_trials %>%
     names_to = 'response_map',
     values_to = 'speaker_likelihood'
   ) %>%
-  mutate(presc_normality = ifelse(response_map == "response_relig_1_left" | response_map == "response_relig_2_right", 'normal', 'abnormal'))
+  mutate(presc_normality = ifelse(response_map == "response_relig_1_left" | response_map == "response_relig_2_right", 'normal', 'abnormal')) %>%
+  mutate(religion = ifelse(grepl('relig_1', response_map), 'Rel 1 (red bad)', 'Rel 2 (blue bad)')) %>%
+  mutate(cause = ifelse(grepl('left', response_map), 'blue', 'red'))
 
 df_listener <- df %>%
   filter(trial_type == 'critical-listener') %>%
@@ -174,7 +176,11 @@ exp1_speaker
 plot_listener <- function(listener_trials) {
   plot <- listener_trials %>%
     ggplot(aes(x = mechanism, y = response_relig_unk, color = effect_valence, shape = effect_valence)) +
-    geom_jitter(aes(shape = effect_valence), position = position_jitterdodge(jitter.width = 0.05, jitter.height = .2, dodge.width = dodgewidth), alpha = 1, size = 2) +
+    geom_jitter(aes(shape = effect_valence), position = position_jitterdodge(jitter.width = 0.05, jitter.height = .2, dodge.width = dodgewidth), alpha = .4) +
+    stat_summary(fun = 'mean', position = position_dodge(width = dodgewidth)) +
+    stat_summary(fun.data = 'mean_se', position = position_dodge(width = dodgewidth)) +
+    stat_summary(fun = 'mean', geom = 'line', aes(group = effect_valence),
+                 position = position_dodge(width = dodgewidth)) +
     scale_y_continuous(breaks = 1:7) +
     coord_cartesian(ylim = c(1, 7)) +
     geom_hline(aes(yintercept = 4), linetype = 'dashed') +
@@ -186,18 +192,13 @@ plot_listener <- function(listener_trials) {
 
 exp1_listener <- plot_listener(df_listener_key_trials)
 exp1_listener
-ggsave("01-experiments/03-phase-seaker-and-listener-oriented/images/exp1_listener.png", plot = exp1_listener, width = 6, height = 6, dpi = 150)
-
+# ggsave("01-experiments/03-phase-speaker-and-listener-oriented/images/exp1_listener.png", plot = exp1_listener, width = 6, height = 6, dpi = 150)
 
 # Generate predictions
 
-set.seed(20260115)
-
-speaker_conditions <- read.csv('01-experiments/03-phase-speaker-and-listener-oriented/01-exp-prescrNorm-speakerListener/02 analysis/speaker_conditions_pilot01.csv', stringsAsFactors = FALSE)
-listener_conditions <- read.csv('01-experiments/03-phase-speaker-and-listener-oriented/01-exp-prescrNorm-speakerListener/02 analysis/listener_conditions_pilot01.csv', stringsAsFactors = FALSE)
-
 get_speaker_samples <- function(normality, mechanism, valence, mean, sd, size = 50) {
-  probs <- dnorm(1:7, mean = mean, sd = sd)
+  scale <- 1:7
+  probs <- dnorm(scale, mean = mean, sd = sd)
   probs <- probs / sum(probs)
   df <- data.frame(
     speaker_likelihood = sample(scale, size = size, replace = TRUE, prob = probs),
@@ -209,7 +210,8 @@ get_speaker_samples <- function(normality, mechanism, valence, mean, sd, size = 
 }
 
 get_listener_samples <- function(mechanism, valence, mean, sd, size = 50) {
-  probs <- dnorm(1:7, mean = mean, sd = sd)
+  scale <- 1:7
+  probs <- dnorm(scale, mean = mean, sd = sd)
   probs <- probs / sum(probs)
   df <- data.frame(
     response_relig_unk = sample(scale, size = size, replace = TRUE, prob = probs),
@@ -219,12 +221,29 @@ get_listener_samples <- function(mechanism, valence, mean, sd, size = 50) {
   return(df)
 }
 
+set.seed(148982)
+speaker_conditions <- read.csv('01-experiments/03-phase-speaker-and-listener-oriented/01-exp-prescrNorm-speakerListener/02 analysis/speaker_conditions_pilot01.csv', stringsAsFactors = FALSE)
+listener_conditions <- read.csv('01-experiments/03-phase-speaker-and-listener-oriented/01-exp-prescrNorm-speakerListener/02 analysis/listener_conditions_pilot01.csv', stringsAsFactors = FALSE)
+
 df_speaker_hypo_trials <- do.call(rbind, apply(speaker_conditions, 1, function(row) {
   get_speaker_samples(row["normality"], row["mechanism"], row["valence"], as.numeric(row["mean"]), as.numeric(row["sd"]))
 }))
 plot_speaker(df_speaker_hypo_trials)
-
+ggsave("01-experiments/03-phase-speaker-and-listener-oriented/images/exp1_hypo_speaker.png", plot = plot_speaker(df_speaker_hypo_trials), width = 6, height = 6, dpi = 300)
 df_listener_hypo_trials <- do.call(rbind, apply(listener_conditions, 1, function(row) {
   get_listener_samples(row["mechanism"], row["valence"], as.numeric(row["mean"]), as.numeric(row["sd"]))
 }))
 plot_listener(df_listener_hypo_trials)
+ggsave("01-experiments/03-phase-speaker-and-listener-oriented/images/exp1_hypo_listener.png", plot = plot_listener(df_listener_hypo_trials), width = 6, height = 6, dpi = 300)
+
+
+per_speaker <- df_speaker_key_trials %>%
+  ggplot(aes(x = religion, y = speaker_likelihood, color = cause, shape= interaction(mechanism, effect_valence))) +
+  geom_jitter(size = 3, width = 0.2, height = 0.2)+
+  scale_y_continuous(breaks = 1:7) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  facet_wrap(~prolific_pid) +
+  theme_classic()
+per_speaker
+ggsave("01-experiments/03-phase-speaker-and-listener-oriented/images/exp1_per_speaker.png", plot = per_speaker, width = 10, height = 10, dpi = 300)
