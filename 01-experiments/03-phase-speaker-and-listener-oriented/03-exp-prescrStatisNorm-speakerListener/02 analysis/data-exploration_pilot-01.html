@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.27">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>data-exploration_pilot-01</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="data-exploration_pilot-01_files/libs/clipboard/clipboard.min.js"></script>
+<script src="data-exploration_pilot-01_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="data-exploration_pilot-01_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="data-exploration_pilot-01_files/libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="data-exploration_pilot-01_files/libs/quarto-html/popper.min.js"></script>
+<script src="data-exploration_pilot-01_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="data-exploration_pilot-01_files/libs/quarto-html/anchor.min.js"></script>
+<link href="data-exploration_pilot-01_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="data-exploration_pilot-01_files/libs/quarto-html/quarto-syntax-highlighting-ed96de9b727972fe78a7b5d16c58bf87.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="data-exploration_pilot-01_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="data-exploration_pilot-01_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="data-exploration_pilot-01_files/libs/bootstrap/bootstrap-d6a003b94517c951b2d65075d42fb01b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body class="fullcontent quarto-light">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+
+
+
+<section id="load-packages" class="level1">
+<h1>load packages</h1>
+<p>library(tidyverse) library(ggbeeswarm) library(brms) library(tidyboot) library(tidyjson) library(tidybayes) library(patchwork) library(GGally) library(cowplot) library(BayesFactor) library(aida) # custom helpers: https://github.com/michael-franke/aida-package library(faintr) # custom helpers: https://michael-franke.github.io/faintr/index.html library(cspplot) library(knitr)</p>
+<section id="section" class="level50">
+<p class="heading"></p>
+</section>
+</section>
+<section id="these-options-help-stan-run-faster" class="level1">
+<h1>these options help Stan run faster</h1>
+<p>options(mc.cores = parallel::detectCores(), brms.backend = “cmdstanr”)</p>
+</section>
+<section id="use-the-csp-theme-for-plotting" class="level1">
+<h1>use the CSP-theme for plotting</h1>
+<p>theme_set(theme_csp())</p>
+</section>
+<section id="global-color-scheme-from-csp" class="level1">
+<h1>global color scheme from CSP</h1>
+<p>project_colors = cspplot::list_colors() |&gt; pull(hex)</p>
+</section>
+<section id="setting-theme-colors-globally" class="level1">
+<h1>setting theme colors globally</h1>
+<p>scale_colour_discrete &lt;- function(…) { scale_colour_manual(…, values = project_colors) }</p>
+<p>scale_fill_discrete &lt;- function(…) { scale_fill_manual(…, values = project_colors) }</p>
+<section id="section-1" class="level50">
+<p class="heading"></p>
+<p>df1 &lt;- as_tibble(read.csv(‘../01 data/results_pilot-01.csv’))</p>
+<p>df1 &lt;- df1 %&gt;% rename(trial_type = trialType) %&gt;% rename(trial_nr = trialNr) %&gt;% mutate(response = if_else(!is.na(correct_response_bias), correct_response_bias, response)) %&gt;% select(-correct_response_bias) %&gt;% select(where(~!all(is.na(.)))) %&gt;% mutate(correct = ifelse(is.na(correct_response), TRUE, correct_response == response))</p>
+<p>getComprehensionPass &lt;- function(id) { participant &lt;- df1 %&gt;% filter(prolific_pid == id)</p>
+<p>comp1 &lt;- participant %&gt;% filter(trial_type %in% c(“comprehension-1-1”, “comprehension-1-2”)) %&gt;% group_by(trial_type) %&gt;% summarise(all_correct = all(correct), .groups = “drop”) %&gt;% arrange(trial_type) %&gt;% pull(all_correct)</p>
+<p>comp2 &lt;- participant %&gt;% filter(trial_type == ‘comprehension-2’) %&gt;% summarise(all_correct = all(correct), .groups = “drop”) %&gt;% pull(all_correct)</p>
+<p>comp3 &lt;- participant %&gt;% filter(trial_type == ‘comprehension-3’) %&gt;% summarise(all_correct = all(correct), .groups = “drop”) %&gt;% pull(all_correct)</p>
+<p>return(c( comp1_1Correct = comp1[1], comp1_2Correct = comp1[2], comp2Correct = comp2, comp3Correct = comp3, compCorrect = ifelse(sum(c( !comp1[1], !comp1[2], !comp2, !comp3), na.rm = TRUE) &gt; 1, FALSE, TRUE))) }</p>
+<p>correct_df &lt;- map_dfr(df1$prolific_pid, getComprehensionPass) df1 &lt;- bind_cols(df1, correct_df)</p>
+</section>
+</section>
+<section id="how-many-participants-failed-the-first-round-of-comprehension-1" class="level1">
+<h1>How many participants failed the first round of comprehension 1?</h1>
+<p>df1 %&gt;% filter(!comp1_1Correct) %&gt;% distinct(prolific_pid) %&gt;% nrow() # How many participants failed the second round of comprehension 1? df1 %&gt;% filter(!comp1_2Correct) %&gt;% distinct(prolific_pid) %&gt;% nrow() # How many participants failed comprehension 2? df1 %&gt;% filter(!comp2Correct) %&gt;% distinct(prolific_pid) %&gt;% nrow() # How many participants failed comprehension 3? df1 %&gt;% filter(!comp3Correct) %&gt;% distinct(prolific_pid) %&gt;% nrow()</p>
+</section>
+<section id="remove-participants-who-failed-the-comprehension-checks" class="level1">
+<h1>remove participants who failed the comprehension checks</h1>
+<p>df &lt;- df1 %&gt;% filter(compCorrect)</p>
+<p>df1 %&gt;% select(prolific_pid, comp1_1Correct, comp1_2Correct, comp2Correct, comp3Correct, compCorrect) %&gt;% group_by(prolific_pid) %&gt;% summarise(across(everything(), first)) %&gt;% select(-prolific_pid) %&gt;% mutate(participantID = row_number(), .before = 1) %&gt;% kable(format = ‘markdown’)</p>
+</section>
+<section id="final-sample-size" class="level1">
+<h1>final sample size</h1>
+<p>df %&gt;% distinct(prolific_pid) %&gt;% nrow()</p>
+<p>df_speaker &lt;- df %&gt;% filter(trial_type == ‘critical-speaker’) %&gt;% select(where(~!all(is.na(.))))</p>
+<p>df_speaker_key_trials &lt;- df_speaker %&gt;% filter(left_marble == ‘blue’ &amp; right_marble == ‘red’)</p>
+<p>df_speaker_key_trials &lt;- df_speaker_key_trials %&gt;% pivot_longer( cols = c(response_relig_1_left, response_relig_1_right, response_relig_2_left, response_relig_2_right), names_to = ‘response_map’, values_to = ‘speaker_likelihood’ ) %&gt;% mutate(presc_normality = ifelse(response_map == “response_relig_1_left” | response_map == “response_relig_2_right”, ‘normal’, ‘abnormal’)) %&gt;% mutate( stat_normality = case_when( stat_norm == “blue” &amp; grepl(“left”, response_map, ignore.case = TRUE) ~ “normal”, stat_norm == “red” &amp; grepl(“right”, response_map, ignore.case = TRUE) ~ “normal”, TRUE ~ “abnormal”) ) %&gt;% mutate(religion = ifelse(grepl(‘relig_1’, response_map), ‘Rel 1 (red bad)’, ‘Rel 2 (blue bad)’)) %&gt;% mutate(cause = ifelse(grepl(‘left’, response_map), ‘blue’, ‘red’))</p>
+<p>df_listener &lt;- df %&gt;% filter(trial_type == ‘critical-listener’) %&gt;% select(where(~!all(is.na(.))))</p>
+<p>df_listener_key_trials &lt;- df_listener %&gt;% filter(left_marble == ‘blue’ &amp; right_marble == ‘red’) %&gt;% mutate(response = ifelse(actual_outcome == ‘right’, 8 - as.numeric(response_relig_unk), as.numeric(response_relig_unk))) %&gt;% mutate( stat_normality = case_when( stat_norm == “blue” &amp; actual_outcome == ‘left’ ~ “normal”, stat_norm == “red” &amp; actual_outcome == ‘right’ ~ “normal”, TRUE ~ “abnormal”) )</p>
+<p>df_speaker_key_trials %&gt;% count(mechanism, effect_valence, presc_normality, stat_normality) %&gt;% kable(format = ‘markdown’)</p>
+<p>df_listener_key_trials %&gt;% count(mechanism, effect_valence, stat_normality) %&gt;% kable(format = ‘markdown’)</p>
+</section>
+<section id="effect_valence-mechanism-presc_normality-stat_normality---speaker_likelihood" class="level1">
+<h1>effect_valence, mechanism, presc_normality, stat_normality -&gt; speaker_likelihood</h1>
+<p>dodgewidth &lt;- .3</p>
+<p>plot_speaker &lt;- function(speaker_trials) { plot &lt;- speaker_trials %&gt;% ggplot(aes(x = presc_normality, y = speaker_likelihood, color = stat_normality, shape = stat_normality)) + facet_grid(mechanism ~ factor(effect_valence, levels = c(‘pleasant’, ‘neutral’, ‘unpleasant’))) + stat_summary(fun = ‘mean’, position = position_dodge(width = dodgewidth)) + stat_summary(fun = ‘mean’, geom = ‘line’, aes(group = stat_normality), position = position_dodge(width = dodgewidth)) + stat_summary(fun.data = ‘mean_se’, position = position_dodge(width = dodgewidth)) + geom_jitter(aes(color = stat_normality, shape = stat_normality), position = position_jitterdodge(jitter.width = 0.05, jitter.height = .2, dodge.width = dodgewidth), alpha = .4, size = 2) + scale_y_continuous(breaks = 1:7) + coord_cartesian(ylim = c(1, 7)) + labs(x = ‘Prescriptive normality’, y = ‘Assigned likelihood that the speaker would say this’) + geom_hline(aes(yintercept = 4), linetype = ‘dashed’) + theme_classic() return(plot) }</p>
+<p>exp3_speaker &lt;- plot_speaker(df_speaker_key_trials) exp3_speaker # ggsave(“01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_speaker.png”, plot = exp3_speaker, width = 6, height = 6, dpi = 150)</p>
+<p>plot_listener &lt;- function(listener_trials) { plot &lt;- listener_trials %&gt;% ggplot(aes(x = mechanism, response, color = stat_normality, shape = stat_normality)) + facet_grid(~factor(effect_valence, levels = c(‘pleasant’, ‘neutral’, ‘unpleasant’))) + stat_summary(fun = ‘mean’, position = position_dodge(width = dodgewidth)) + stat_summary(fun = ‘mean’, geom = ‘line’, aes(group = stat_normality), position = position_dodge(width = dodgewidth)) + stat_summary(fun.data = ‘mean_se’, position = position_dodge(width = dodgewidth)) + geom_jitter(aes(color = stat_normality), position = position_jitterdodge(jitter.width = 0.05, jitter.height = .2, dodge.width = dodgewidth), alpha = .4) + scale_y_continuous(breaks = 1:7) + coord_cartesian(ylim = c(1, 7)) + labs(x = ‘Prescriptive normality’, y = ‘Inference that cause is (prescriptive) norm-violating’) + geom_hline(aes(yintercept = 4), linetype = ‘dashed’) + theme_classic() return(plot) }</p>
+<p>exp3_listener &lt;- plot_listener(df_listener_key_trials) exp3_listener # ggsave(“01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_listener.png”, plot = exp3_listener, width = 6, height = 6, dpi = 150)</p>
+</section>
+<section id="generate-predictions" class="level1">
+<h1>Generate predictions</h1>
+<p>get_speaker_samples &lt;- function(presc_normality, stat_normality, mechanism, valence, mean, sd, size = 50) { scale &lt;- 1:7 probs &lt;- dnorm(scale, mean = mean, sd = sd) probs &lt;- probs / sum(probs) df &lt;- data.frame( speaker_likelihood = sample(scale, size = size, replace = TRUE, prob = probs), presc_normality = rep(presc_normality, size), stat_normality = rep(stat_normality, size), effect_valence = rep(valence, size), mechanism = rep(mechanism, size) ) return(df) }</p>
+<p>get_listener_samples &lt;- function(stat_normality, mechanism, valence, mean, sd, size = 50) { scale &lt;- 1:7 probs &lt;- dnorm(scale, mean = mean, sd = sd) probs &lt;- probs / sum(probs) df &lt;- data.frame( response = sample(scale, size = size, replace = TRUE, prob = probs), effect_valence = rep(valence, size), stat_normality = rep(stat_normality, size), mechanism = rep(mechanism, size) ) return(df) }</p>
+<p>set.seed(864529)</p>
+<p>speaker_conditions &lt;- read.csv(‘speaker_conditions_pilot-01.csv’, stringsAsFactors = FALSE) listener_conditions &lt;- read.csv(‘listener_conditions_pilot-01.csv’, stringsAsFactors = FALSE)</p>
+<p>df_speaker_hypo_trials &lt;- do.call(rbind, apply(speaker_conditions, 1, function(row) { get_speaker_samples(row[“presc_normality”], row[“stat_normality”], row[“mechanism”], row[“valence”], as.numeric(row[“mean”]), as.numeric(row[“sd”])) })) plot_speaker(df_speaker_hypo_trials) ggsave(“01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_hypo_speaker.png”, plot = plot_speaker(df_speaker_hypo_trials), width = 6, height = 6, dpi = 300)</p>
+<p>df_listener_hypo_trials &lt;- do.call(rbind, apply(listener_conditions, 1, function(row) { get_listener_samples(row[“stat_normality”], row[“mechanism”], row[“valence”], as.numeric(row[“mean”]), as.numeric(row[“sd”])) })) plot_listener(df_listener_hypo_trials) ggsave(“01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_hypo_listener.png”, plot = plot_listener(df_listener_hypo_trials), width = 6, height = 6, dpi = 300)</p>
+<p>per_speaker &lt;- df_speaker_key_trials %&gt;% ggplot(aes(x = religion, y = speaker_likelihood, color = cause, shape = interaction(stat_normality, mechanism, effect_valence))) + geom_jitter(size = 3, width = 0.2, height = 0.2) + scale_y_continuous(breaks = 1:7) + coord_cartesian(ylim = c(1, 7)) + geom_hline(aes(yintercept = 4), linetype = ‘dashed’) + facet_wrap(~prolific_pid) + theme_classic() per_speaker ggsave(“01-experiments/03-phase-speaker-and-listener-oriented/images/exp3_per_speaker.png”, plot = per_speaker, width = 10, height = 10, dpi = 300)</p>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

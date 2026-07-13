@@ -1,0 +1,287 @@
+---
+title: "Data Exploration exp-01 pilot-01"
+format:
+  html:
+    code-fold: true
+
+---
+
+This is an exploratory analysis pipeline, using data collected from Prolific on (N=10).
+```{r}
+#| echo: true
+#| warning: false
+
+
+# load packages
+library(pacman)
+p_load(tidyverse, ggbeeswarm, brms, tidyboot, tidyjson, tidybayes, patchwork, GGally, cowplot, BayesFactor, aida, faintr, cspplot, knitr, patchwork, here)
+
+##################################################
+
+# these options help Stan run faster
+options(mc.cores = parallel::detectCores(),
+        brms.backend = "cmdstanr")
+
+# use the CSP-theme for plotting
+theme_set(theme_csp())
+
+# global color scheme from CSP
+project_colors = cspplot::list_colors() |> pull(hex)
+
+# setting theme colors globally
+scale_colour_discrete <- function(...) {
+  scale_colour_manual(..., values = project_colors)
+}
+
+scale_fill_discrete <- function(...) {
+  scale_fill_manual(..., values = project_colors)
+}
+
+##################################################
+```
+## Preprocessing
+First, we clean up the data by renaming columns and removing empty rows. We start preparing for data exclusion by
+logging correctness of all comprehension responses.
+```{r}
+raw <- as_tibble(read.csv(here("01-experiments","03-phase-speaker-and-listener-oriented","01-exp-prescrNorm-speakerListener","01 data","results_pilot-01.csv")))
+
+full <- raw %>%
+  rename(trial_type = trialType) %>%
+  rename(trial_nr = trialNr) %>%
+  select(where(~!all(is.na(.)))) %>%
+  mutate(correct = ifelse(is.na(correct_response), TRUE, correct_response == response))
+```
+
+## Exclusion
+We exclude from further analysis participants who didn't pass the first set of comprehension questions even on their
+second attempt or failed more than one question from the second set of comprehension questions.
+```{r}
+getComprehensionPass <- function(id) {
+  participant <- full %>% filter(prolific_pid == id)
+  comp1 <- participant %>%
+    filter(trial_type %in% c("comprehension-1-1", "comprehension-1-2")) %>%
+    group_by(trial_type) %>%
+    summarise(all_correct = all(correct), .groups = "drop") %>%
+    arrange(trial_type) %>%
+    pull(all_correct)
+
+  comp2 <- participant %>%
+    filter(trial_type == 'comprehension-2') %>%
+    summarise(all_correct = all(correct), .groups = "drop") %>%
+    pull(all_correct)
+
+  return(c(
+    comp1_1Correct = comp1[1],
+    comp1_2Correct = comp1[2],
+    comp2Correct = comp2,
+    compCorrect = ifelse(sum(c(!comp1[1], !comp1[2], !comp2), na.rm = TRUE)>1, FALSE,TRUE)
+  ))
+}
+
+correct_df <- map_dfr(full$prolific_pid, getComprehensionPass)
+full <- bind_cols(full, correct_df)
+
+cat('How many participants failed the first round of comprehension 1?\n',
+full %>%
+  filter(!comp1_1Correct) %>%
+  distinct(prolific_pid) %>%
+  nrow()
+ , '\n')
+
+cat('How many of those then failed the second round of comprehension 1?\n',
+# if participants do not fail the first round they do not do the second round
+full %>%
+  filter(!comp1_2Correct) %>%
+  distinct(prolific_pid) %>%
+  nrow()
+ , '\n')
+
+cat('How many participants failed comprehension 2?\n',
+full %>%
+  filter(!comp2Correct) %>%
+  distinct(prolific_pid) %>%
+  nrow()
+  , '\n')
+```
+
+```{r}
+# remove participants who failed the comprehension checks
+filtered <- full %>%
+  filter(compCorrect)
+
+cat('final sample after exclusion: N=',
+filtered %>%
+  distinct(prolific_pid) %>%
+  nrow()
+,'\n')
+```
+## Processing
+
+```{r}
+# focus on critical trials
+df_speaker <- filtered %>%
+  filter(trial_type == 'critical-speaker') %>%
+  select(where(~!all(is.na(.))))
+
+df_speaker_key_trials <- df_speaker %>%
+  filter(left_marble == 'blue' & right_marble == 'red')
+
+
+# long-form dataframe, data are recoded using the response_map column to columns capturing:
+# - prescriptive normality for the given religion
+# - religion against which the participants judged the utterances
+# - cause recoded as colour of the ball instead of left right
+
+df_speaker_key_trials <- df_speaker_key_trials %>%
+  pivot_longer(
+    cols = c(response_relig_1_left, response_relig_1_right, response_relig_2_left, response_relig_2_right),
+    names_to = 'response_map',
+    values_to = 'speaker_likelihood'
+  ) %>%
+  mutate(presc_normality = ifelse(response_map == "response_relig_1_left" | response_map == "response_relig_2_right", 'normal', 'abnormal')) %>%
+  mutate(religion = ifelse(grepl('relig_1', response_map), 'Rel 1 (red bad)', 'Rel 2 (blue bad)')) %>%
+  mutate(cause = ifelse(grepl('left', response_map), 'blue', 'red'))
+
+# focus on critical trials
+df_listener <- filtered %>%
+  filter(trial_type == 'critical-listener') %>%
+  select(where(~!all(is.na(.))))
+
+# recode responses so that responses about each possible cause can be plotted in one range
+df_listener_key_trials <- df_listener %>%
+  filter(left_marble == 'blue' & right_marble == 'red') %>%
+  mutate(response = ifelse(actual_outcome == 'right', 8 - as.numeric(response_relig_unk),
+                           as.numeric(response_relig_unk)))
+
+```
+With data processed, we can check how many data points for which condition.
+```{r}
+# There are 2(mechanism) x 3 (effect valence) x 2 (presc normality) = 12 conditions
+df_speaker_key_trials %>%
+  count(mechanism, effect_valence, presc_normality) %>%
+  kable(format = 'markdown')
+
+# There are 2(mechanism) x 3(effect valence) = 6 conditions
+df_listener_key_trials %>%
+  count(mechanism, effect_valence) %>%
+  kable(format = 'markdown')
+```
+
+## Generate hypothetical simulated data
+```{r}
+
+# Generate n sample data points for a given condition from a normal distribution for a given mean and sd
+get_speaker_samples <- function(normality, mechanism, valence, mean, sd, size = 50){
+  scale <- 1:7
+  probs <- dnorm(scale, mean = mean, sd = sd)
+  probs <- probs / sum(probs)
+  df <- data.frame(
+    speaker_likelihood = sample(scale, size = size, replace = TRUE, prob = probs),
+    presc_normality = rep(normality, size),
+    effect_valence = rep(valence, size),
+    mechanism = rep(mechanism, size)
+  )
+  return(df)
+}
+
+# Generate n sample data points for a given condition from a normal distribution for a given mean and sd
+get_listener_samples <- function(mechanism, valence, mean, sd, size = 50) {
+  scale <- 1:7
+  probs <- dnorm(scale, mean = mean, sd = sd)
+  probs <- probs / sum(probs)
+  df <- data.frame(
+    response_relig_unk = sample(scale, size = size, replace = TRUE, prob = probs),
+    effect_valence = rep(valence, size),
+    mechanism = rep(mechanism, size)
+  )
+  return(df)
+}
+```
+
+```{r}
+# get table of means and sds for each condition based on which full dataset is simulated
+speaker_conditions <- read.csv(here("01-experiments","03-phase-speaker-and-listener-oriented","01-exp-prescrNorm-speakerListener","02 analysis","speaker-conditions_pilot-01.csv"), stringsAsFactors = FALSE)
+listener_conditions <- read.csv(here("01-experiments","03-phase-speaker-and-listener-oriented","01-exp-prescrNorm-speakerListener","02 analysis","listener-conditions_pilot-01.csv"), stringsAsFactors = FALSE)
+
+set.seed(148982)
+# generate n datapoints for each condition for the speaker task
+df_pred_speaker_trials <- do.call(rbind, apply(speaker_conditions, 1, function(row) {
+  get_speaker_samples(row["normality"], row["mechanism"], row["valence"], as.numeric(row["mean"]), as.numeric(row["sd"]))
+}))
+
+# generate n datapoints for each condition for the listener task
+df_pred_listener_trials <- do.call(rbind, apply(listener_conditions, 1, function(row) {
+  get_listener_samples(row["mechanism"], row["valence"], as.numeric(row["mean"]), as.numeric(row["sd"]))
+}))
+```
+
+## Data Visualisation
+
+### Speaker task
+```{r}
+#| echo: true
+#| warning: false
+dodgewidth <- .3
+
+plot_speaker <- function(speaker_trials) {
+  plot <- speaker_trials %>%
+    ggplot(aes(x = presc_normality, y = speaker_likelihood, color = effect_valence, shape = effect_valence)) +
+    geom_jitter(aes(shape = effect_valence), position = position_jitterdodge(jitter.width = 0.05, jitter.height = .4, dodge.width = dodgewidth), alpha = .4) +
+    scale_color_manual(values = c("unpleasant" = project_colors[2], "neutral" = project_colors[1], "pleasant" = project_colors[3])) +
+    facet_grid(. ~ mechanism) +
+    stat_summary(fun = 'mean', position = position_dodge(width = dodgewidth)) +
+    stat_summary(fun.data = 'mean_se', position = position_dodge(width = dodgewidth)) +
+    stat_summary(fun = 'mean', geom = 'line', aes(group = effect_valence),
+                 position = position_dodge(width = dodgewidth)) +
+    scale_y_continuous(breaks = 1:7) +
+    coord_cartesian(ylim = c(1, 7)) +
+    geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+    ylab('Assigned likelihood that the speaker would say this') +
+    xlab('Prescriptive normality') +
+    theme_classic()
+  return(plot)
+}
+
+exp1_speaker <- plot_speaker(df_speaker_key_trials)
+exp1_speaker
+
+exp1_pred_speaker <- (plot_speaker(df_pred_speaker_trials))
+exp1_pred_speaker
+
+(exp1_speaker | exp1_pred_speaker) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+### Listener Task
+```{r}
+#| echo: true
+#| warning: false
+plot_listener <- function(listener_trials) {
+  plot <- listener_trials %>%
+    ggplot(aes(x = mechanism, y = response_relig_unk, color = effect_valence, shape = effect_valence)) +
+    geom_jitter(aes(shape = effect_valence), position = position_jitterdodge(jitter.width = 0.05, jitter.height = .2, dodge.width = dodgewidth), alpha = .4) +
+    scale_color_manual(values = c("unpleasant" = project_colors[2], "neutral" = project_colors[1], "pleasant" = project_colors[3])) +
+    stat_summary(fun = 'mean', position = position_dodge(width = dodgewidth)) +
+    stat_summary(fun.data = 'mean_se', position = position_dodge(width = dodgewidth)) +
+    stat_summary(fun = 'mean', geom = 'line', aes(group = effect_valence),
+                 position = position_dodge(width = dodgewidth)) +
+    scale_y_continuous(breaks = 1:7) +
+    coord_cartesian(ylim = c(1, 7)) +
+    geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+    ylab('Inference that cause is (prescriptive) norm-violating') +
+    xlab('Mechanism') +
+    theme_classic()
+  return(plot)
+}
+
+exp1_listener <- plot_listener(df_listener_key_trials)
+exp1_listener
+
+exp1_pred_listener <- (plot_listener(df_pred_listener_trials))
+exp1_pred_listener
+
+(exp1_listener | exp1_pred_listener) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+
