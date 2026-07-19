@@ -6,6 +6,8 @@ format:
     # toc-location: left
     toc-depth: 12
     code-fold: true
+execute:
+  fig-width: 8
 ---
 
 This notebook contains an exploratory analysis of three experiments in the CausalAttribInference project. Collected human data from pilots is looked at through the lens of the following set of hypotheses.
@@ -15,27 +17,24 @@ This notebook contains an exploratory analysis of three experiments in the Causa
 First, we clean up the data by renaming columns and removing empty rows. We start preparing for data exclusion by logging correctness of all comprehension responses.
 
 ```{r preprocessing}
+#| code-summary: "Preprocessing"
 #| warning: false
-# load packages
-library(pacman)
-p_load(
-  tidyverse,
-  ggbeeswarm,
-  brms,
-  tidyboot,
-  tidyjson,
-  tidybayes,
-  patchwork,
-  GGally,
-  cowplot,
-  BayesFactor,
-  aida,
-  faintr,
-  cspplot,
-  knitr,
-  patchwork,
-  here
-)
+library(tidyverse)
+library(ggbeeswarm)
+library(ggbrace)
+library(GGally)
+library(patchwork)
+library(cowplot)
+library(cspplot)
+library(brms)
+library(tidybayes)
+library(BayesFactor)
+library(aida)
+library(faintr)
+library(tidyboot)
+library(tidyjson)
+library(here)
+library(knitr)
 
 ##################################################
 
@@ -58,6 +57,8 @@ scale_fill_discrete <- function(...) {
 }
 
 ##################################################
+
+set.seed(148982)
 
 exp1_raw <- as_tibble(read.csv(here(
   "01-experiments",
@@ -165,7 +166,11 @@ exp3_full <- exp3_raw |>
 
 We exclude from further analysis participants who didn't pass the first set of comprehension questions even on their second attempt or failed more than one question from the second set of comprehension questions.
 
+<details>
+<summary>See tablular overviews</summary>
+
 ```{r exclusion}
+
 exp1_getComprehensionPass <- function(id) {
   participant <- exp1_full |> filter(prolific_pid == id)
   comp1 <- participant |>
@@ -358,6 +363,7 @@ exp3_filtered <- exp3_full |>
 ```
 
 ```{r focus-critical-trials}
+
 valence_levels <- c("pleasant", "neutral", "unpleasant")
 
 factorise_valence <- function(df) {
@@ -533,11 +539,18 @@ exp3_listener_key_trials <- exp3_listener |>
   )
 ```
 
+</details>
+
 ## Sample size per conditions
 
 (In the speaker task, we get four data points per participant; in the listener task we get one data point.) The following tables show only conditions for which we have at least one value in the dataset.
 
+<details>
+<summary>See tabular overviews</summary>
+
 ```{r conditions-overview}
+#| code-summary: "Overview of conditions"
+
 exp1_speaker_key_trials |>
   count(mechanism, effect_valence, presc_normality) |>
   rowid_to_column(" ") |>
@@ -585,271 +598,7 @@ exp3_listener_key_trials |>
   )
 ```
 
-## Generating simulated data
-
-```{r generate-simulated-data}
-
-# Generate n sample data points for a given condition from a normal distribution for a given mean and sd
-exp1_get_speaker_samples <- function(
-  normality,
-  mechanism,
-  valence,
-  mean,
-  sd,
-  size = 30
-) {
-  scale <- 1:7
-  probs <- dnorm(scale, mean = mean, sd = sd)
-  probs <- probs / sum(probs)
-  df <- data.frame(
-    speaker_likelihood = sample(
-      scale,
-      size = size,
-      replace = TRUE,
-      prob = probs
-    ),
-    presc_normality = rep(normality, size),
-    effect_valence = rep(valence, size),
-    mechanism = rep(mechanism, size)
-  )
-  return(df)
-}
-
-exp2_get_speaker_samples <- function(
-  normality,
-  mechanism,
-  valence,
-  mean,
-  sd,
-  size = 30
-) {
-  scale <- 1:7
-  probs <- dnorm(scale, mean = mean, sd = sd)
-  probs <- probs / sum(probs)
-  df <- data.frame(
-    speaker_likelihood = sample(
-      scale,
-      size = size,
-      replace = TRUE,
-      prob = probs
-    ),
-    stat_normality = rep(normality, size),
-    effect_valence = rep(valence, size),
-    mechanism = rep(mechanism, size)
-  )
-  return(df)
-}
-
-exp3_get_speaker_samples <- function(
-  presc_normality,
-  stat_normality,
-  mechanism,
-  valence,
-  mean,
-  sd,
-  size = 30
-) {
-  scale <- 1:7
-  probs <- dnorm(scale, mean = mean, sd = sd)
-  probs <- probs / sum(probs)
-  df <- data.frame(
-    speaker_likelihood = sample(
-      scale,
-      size = size,
-      replace = TRUE,
-      prob = probs
-    ),
-    presc_normality = rep(presc_normality, size),
-    stat_normality = rep(stat_normality, size),
-    effect_valence = rep(valence, size),
-    mechanism = rep(mechanism, size)
-  )
-  return(df)
-}
-
-# Generate n sample data points for a given condition from a normal distribution for a given mean and sd
-exp1_get_listener_samples <- function(mechanism, valence, mean, sd, size = 30) {
-  scale <- 1:7
-  probs <- dnorm(scale, mean = mean, sd = sd)
-  probs <- probs / sum(probs)
-  df <- data.frame(
-    response = sample(
-      scale,
-      size = size,
-      replace = TRUE,
-      prob = probs
-    ),
-    effect_valence = rep(valence, size),
-    mechanism = rep(mechanism, size)
-  )
-  return(df)
-}
-
-exp2_get_listener_samples <- function(mechanism, valence, mean, sd, size = 30) {
-  scale <- 1:7
-  probs <- dnorm(scale, mean = mean, sd = sd)
-  probs <- probs / sum(probs)
-  df <- data.frame(
-    response = sample(scale, size = size, replace = TRUE, prob = probs),
-    effect_valence = rep(valence, size),
-    mechanism = rep(mechanism, size)
-  )
-  return(df)
-}
-
-exp3_get_listener_samples <- function(
-  stat_normality,
-  mechanism,
-  valence,
-  mean,
-  sd,
-  size = 30
-) {
-  scale <- 1:7
-  probs <- dnorm(scale, mean = mean, sd = sd)
-  probs <- probs / sum(probs)
-  df <- data.frame(
-    response = sample(scale, size = size, replace = TRUE, prob = probs),
-    effect_valence = rep(valence, size),
-    stat_normality = rep(stat_normality, size),
-    mechanism = rep(mechanism, size)
-  )
-  return(df)
-}
-
-
-# Exp1
-
-# get table of means and sds for each condition based on which full dataset is simulated
-
-base <- here(
-  "01-experiments",
-  "03-phase-speaker-and-listener-oriented",
-  "05 analysis",
-  "fictional-data-gen-params"
-)
-
-speaker_conditions <- read.csv(
-  file.path(base, "exp1_speaker_params.csv"),
-  stringsAsFactors = FALSE
-)
-listener_conditions <- read.csv(
-  file.path(base, "exp1_listener_params.csv"),
-  stringsAsFactors = FALSE
-)
-
-set.seed(148982)
-# generate n datapoints for each condition for the speaker task
-exp1_pred_speaker_trials <- do.call(
-  rbind,
-  apply(speaker_conditions, 1, function(row) {
-    exp1_get_speaker_samples(
-      row["normality"],
-      row["mechanism"],
-      row["valence"],
-      as.numeric(row["mean"]),
-      as.numeric(row["sd"])
-    )
-  })
-)
-
-# generate n datapoints for each condition for the listener task
-exp1_pred_listener_trials <- do.call(
-  rbind,
-  apply(listener_conditions, 1, function(row) {
-    exp1_get_listener_samples(
-      row["mechanism"],
-      row["valence"],
-      as.numeric(row["mean"]),
-      as.numeric(row["sd"])
-    )
-  })
-)
-
-# Exp 2
-
-speaker_conditions <- read.csv(
-  file.path(base, "exp2_speaker_params.csv"),
-  stringsAsFactors = FALSE
-)
-listener_conditions <- read.csv(
-  file.path(base, "exp2_listener_params.csv"),
-  stringsAsFactors = FALSE
-)
-
-# set.seed(874925)
-exp2_pred_speaker_trials <- do.call(
-  rbind,
-  apply(speaker_conditions, 1, function(row) {
-    exp2_get_speaker_samples(
-      row["normality"],
-      row["mechanism"],
-      row["valence"],
-      as.numeric(row["mean"]),
-      as.numeric(row["sd"])
-    )
-  })
-)
-exp2_pred_listener_trials <- do.call(
-  rbind,
-  apply(listener_conditions, 1, function(row) {
-    exp2_get_listener_samples(
-      row["mechanism"],
-      row["valence"],
-      as.numeric(row["mean"]),
-      as.numeric(row["sd"])
-    )
-  })
-)
-
-# Exp 3
-
-speaker_conditions <- read.csv(
-  file.path(base, "exp3_speaker_params.csv"),
-  stringsAsFactors = FALSE
-)
-listener_conditions <- read.csv(
-  file.path(base, "exp3_listener_params.csv"),
-  stringsAsFactors = FALSE
-)
-
-# set.seed(864529)
-exp3_pred_speaker_trials <- do.call(
-  rbind,
-  apply(speaker_conditions, 1, function(row) {
-    exp3_get_speaker_samples(
-      row["presc_normality"],
-      row["stat_normality"],
-      row["mechanism"],
-      row["valence"],
-      as.numeric(row["mean"]),
-      as.numeric(row["sd"])
-    )
-  })
-)
-
-exp3_pred_listener_trials <- do.call(
-  rbind,
-  apply(listener_conditions, 1, function(row) {
-    exp3_get_listener_samples(
-      row["stat_normality"],
-      row["mechanism"],
-      row["valence"],
-      as.numeric(row["mean"]),
-      as.numeric(row["sd"])
-    )
-  })
-)
-
-exp1_pred_speaker_trials <- factorise_valence(exp1_pred_speaker_trials)
-exp1_pred_listener_trials <- factorise_valence(exp1_pred_listener_trials)
-
-exp2_pred_speaker_trials <- factorise_valence(exp2_pred_speaker_trials)
-exp2_pred_listener_trials <- factorise_valence(exp2_pred_listener_trials)
-
-exp3_pred_speaker_trials <- factorise_valence(exp3_pred_speaker_trials)
-exp3_pred_listener_trials <- factorise_valence(exp3_pred_listener_trials)
-```
+</details>
 
 ## Hypotheses
 
@@ -861,7 +610,15 @@ exp3_pred_listener_trials <- factorise_valence(exp3_pred_listener_trials)
 
 [*Experiment 2*]
 
-3. When both **statistical** and **prescriptive** norms are present, people's causal ratings vary monotonically with the combined statistical-prescriptive norms, taking both into account when making causal selections such that:
+3.
+
+- Current literature does not say much on the possible combination of effects different norms. Therefore we offer two hypotheses, one that is based on current literature and then a naive linear combination hypothesis.
+
+current-literature hypothesis: $[SN+PN] < [SN+PA], [SA+PN], [SA+PA]$ in conjunction, and $[SN+PN] < [SN+PA], [SA+PN], [SA+PA]$
+
+We could think of the situations where at least one normality is abnormal as basically variants of the first two experiments in cases where a vignette would actually contain another kind of norm that was not manipulated - with one abormal norm, we would expect inflation and deflation from the one abnormality. This hypothesis does not address what happens when both normalities are abnormal.
+
+When both **statistical** and **prescriptive** norms are present, people's causal ratings vary monotonically with the combined statistical-prescriptive norms, taking both into account when making causal selections such that:
 
 -   in **conjunction**, likelihood ratings **increase** monotonically due to effect of abnormal inflation: $$[SN+PN] < [SA+PN] < [SA+PA]$$ $$[SN+PN] < [SN+PA] < [SA+PA]$$
 -   in **disjunction**, likelihood ratings **decreases** monotonically due to the effect of abnormal deflation: $$[SN+PN] > [SA+PN] > [SA+PA]$$ $$[SN+PN] > [SN+PA] > [SA+PA]$$
@@ -887,7 +644,7 @@ exp3_pred_listener_trials <- factorise_valence(exp3_pred_listener_trials)
 
 [*Experiment 1, Experiment 2, and Experiment 3*]
 
-## Data Visualisation Per Hypothesis
+## Data Visualisation
 
 ### Hypothesis 1
 
@@ -897,8 +654,8 @@ exp3_pred_listener_trials <- factorise_valence(exp3_pred_listener_trials)
 
 We expect:
 
-- abnormal inflation in conjunction
-- abnormal deflation in disjunction
+- **H1:P1**: abnormal inflation in conjunction in speaker
+- **H1:P2**: abnormal deflation in disjunction in speaker
 
 ```{r hyp1-speaker}
 #| fig-cap: "E: 'The machine made sound A.' C: 'A [COLOUR] marble was released.' Colour ([COLOUR] = red or blue) is counterbalanced with the norm manipulation: assignment of the normal and abnormal condition to each colour is randomised across participants."
@@ -915,43 +672,116 @@ fictional_transparency <- annotate(
   alpha = .3
 )
 
-hyp1_plot_speaker <- function(speaker_trials, valence_facet = FALSE) {
-  plot <- speaker_trials |>
-    ggplot(aes(x = mechanism, y = speaker_likelihood, fill = presc_normality)) +
-    stat_summary(
-      fun = mean,
-      geom = "col",
-      width = 0.7,
-      position = position_dodge(width = 0.7)
-    ) +
-    stat_summary(
-      fun.data = mean_se,
-      geom = "errorbar",
-      width = 0.2,
-      position = position_dodge(width = 0.7)
-    ) +
-    scale_fill_manual(values = c(CSP_colors[2], CSP_colors[4])) +
-    scale_y_continuous(breaks = 1:7) +
-    coord_cartesian(ylim = c(1, 7)) +
-    geom_hline(aes(yintercept = 4), linetype = 'dashed') +
-    labs(
-      x = 'Causal mechanism',
-      y = "Likelihood rating: 'E because C'",
-      fill = 'Prescriptive normality of C'
-    ) +
-    theme_minimal()
-  if (valence_facet) {
-    plot <- plot + facet_grid(effect_valence ~ .)
-  }
-  return(plot)
-}
 
-hyp1_speaker <- hyp1_plot_speaker(exp1_speaker_key_trials)
-hyp1_pred_speaker <- hyp1_plot_speaker(exp1_pred_speaker_trials)
+exp1_speaker_params <- expand_grid(
+  normality = c("normal", "abnormal"),
+  mechanism = c("conjunctive", "disjunctive"),
+  valence = c("pleasant", "neutral", "unpleasant")
+) |>
+  mutate(mean = 4, sd = 1) |>
+  mutate(
+    mean = mean +
+      case_when(
+        # abnormal inflation and deflation effects
+        normality == 'abnormal' & mechanism == 'conjunctive' ~ 1,
+        normality == 'abnormal' & mechanism == 'disjunctive' ~ -1,
+        .default = 0
+      )
+  ) |>
+  mutate(
+    mean = mean +
+      case_when(
+        # valence effects
+        normality == 'normal' & valence == 'pleasant' ~ 1.5,
+        normality == 'normal' & valence == 'unpleasant' ~ -1.5,
+        normality == 'abnormal' & valence == 'pleasant' ~ -1.5,
+        normality == 'abnormal' & valence == 'unpleasant' ~ 1.5,
+        .default = 0
+      )
+  )
+
+hyp1_speaker <- exp1_speaker_key_trials |>
+  ggplot(aes(x = mechanism, y = speaker_likelihood, fill = presc_normality)) +
+  stat_summary(
+    fun = mean,
+    geom = "col",
+    width = 0.7,
+    position = position_dodge(width = 0.7)
+  ) +
+  stat_summary(
+    fun.data = mean_se,
+    geom = "errorbar",
+    width = 0.2,
+    position = position_dodge(width = 0.7)
+  ) +
+  scale_fill_manual(values = c(CSP_colors[2], CSP_colors[4])) +
+  scale_y_continuous(breaks = 1:7) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  labs(
+    x = 'Causal mechanism',
+    y = "Likelihood rating: 'E because C'",
+    fill = 'Prescriptive normality of C'
+  ) +
+  theme_minimal()
+
+inflation_mean <- exp1_speaker_params |>
+  filter(mechanism == "conjunctive" & normality == "abnormal") |>
+  pull(mean) |>
+  mean()
+deflation_mean <- exp1_speaker_params |>
+  filter(mechanism == "disjunctive" & normality == "abnormal") |>
+  pull(mean) |>
+  mean()
+
+hyp1_pred_speaker <- exp1_speaker_params |>
+  filter("normality" != "abnormal") |>
+  ggplot(aes(x = mechanism, y = mean, fill = normality)) +
+  stat_summary(
+    fun = mean,
+    geom = "col",
+    width = 0.7,
+    position = position_dodge(width = 0.7)
+  ) +
+  scale_fill_manual(values = c(CSP_colors[2], "white")) +
+  scale_y_continuous(breaks = 4) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  labs(
+    x = 'Causal mechanism',
+    y = "Likelihood rating: 'E because C'",
+    fill = 'Prescriptive normality of C'
+  ) +
+  stat_brace(
+    data = data.frame(x = c(0.98, 0.98), y = c(4, inflation_mean)),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+ annotate("text", x = 1.35, y = (4 + inflation_mean) / 2,
+           label = "H1:P1", fontface = "bold") +
+  stat_brace(
+    data = data.frame(x = c(1.98, 1.98), y = c(4, deflation_mean)),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  annotate("text", x = 2.35, y = (4 + deflation_mean) / 2,
+           label = "H1:P2", fontface = "bold") +
+  theme_minimal()
 
 (hyp1_speaker +
   labs(title = "Collected") |
-  hyp1_pred_speaker + labs(title = "Fictional") + fictional_transparency) +
+  hyp1_pred_speaker +
+    labs(title = "Fictional") +
+    fictional_transparency +
+    guides(fill = "none")) +
   plot_layout(guides = "collect") &
   theme(legend.position = "bottom")
 ```
@@ -962,31 +792,87 @@ hyp1_pred_speaker <- hyp1_plot_speaker(exp1_pred_speaker_trials)
 
 We expect:
 
-- Cause more likely to be prescriptively abnormal when mechanism is conjunctive
-- Cause more likely to be prescriptively normal when mechanism is disjunctive
+- **H1:P3**: Cause more likely to be prescriptively abnormal when mechanism is conjunctive
+- **H1:P4**: Cause more likely to be prescriptively normal when mechanism is disjunctive
 
 ```{r hyp1-listener}
 #| fig-cap: "Listener hears 'E because C' and infers whether C is prescriptively normal or abnormal."
 
-hyp1_plot_listener <- function(listener_trials, valence_facet = FALSE) {
-  plot <- listener_trials |>
-    ggplot(aes(x = mechanism, y = response)) +
-    stat_summary(fun = mean, geom = "col", width = 0.7, fill = CSP_colors[5]) +
-    stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
-    scale_y_continuous(breaks = 1:7) +
-    coord_cartesian(ylim = c(1, 7)) +
-    geom_hline(aes(yintercept = 4), linetype = 'dashed') +
-    ylab('Inference that selected cause is prescriptively abnormal') +
-    xlab('Causal mechanism') +
-    theme_minimal()
-  if (valence_facet) {
-    plot <- plot + facet_grid(effect_valence ~ .)
-  }
-  return(plot)
-}
+exp1_listener_params <- expand_grid(
+  mechanism = c("conjunctive", "disjunctive"),
+  valence = c("pleasant", "neutral", "unpleasant")
+) |>
+  mutate(mean = 4, sd = 1) |>
+  mutate(
+    mean = mean +
+      case_when(
+        mechanism == "conjunctive" ~ 1,
+        mechanism == "disjunctive" ~ -1
+      )
+  ) |>
+  mutate(
+    mean = mean +
+      case_when(
+        valence == "pleasant" ~ -1.5,
+        valence == "unpleasant" ~ 1.5,
+        .default = 0
+      )
+  )
 
-hyp1_listener <- hyp1_plot_listener(exp1_listener_key_trials)
-hyp1_pred_listener <- hyp1_plot_listener(exp1_pred_listener_trials)
+hyp1_listener <- exp1_listener_key_trials |>
+  ggplot(aes(x = mechanism, y = response)) +
+  stat_summary(fun = mean, geom = "col", width = 0.7, fill = CSP_colors[5]) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  scale_y_continuous(breaks = 1:7) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  ylab('Inference that selected cause is prescriptively abnormal') +
+  xlab('Causal mechanism') +
+  theme_minimal()
+
+
+inflation_mean <- exp1_listener_params |>
+  filter(mechanism == "conjunctive") |>
+  pull(mean) |>
+  mean()
+deflation_mean <- exp1_listener_params |>
+  filter(mechanism == "disjunctive") |>
+  pull(mean) |>
+  mean()
+
+hyp1_pred_listener <- exp1_listener_params |>
+  ggplot(aes(x = mechanism, y = mean)) +
+  stat_summary(fun = mean, geom = "col", width = 0.7, fill = CSP_colors[5]) +
+  scale_y_continuous(breaks = 4) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  ylab('Inference that selected cause is prescriptively abnormal') +
+  xlab('Causal mechanism') +
+  stat_brace(
+    data = data.frame(x = c(1.33, 1.33), y = c(4, inflation_mean)),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+ annotate("text", x = 1.73, y = (4 + inflation_mean) / 2,
+           label = "H1:P3", fontface = "bold") +
+  scale_x_discrete(expand = expansion(add = c(0.6, 1))) +
+  stat_brace(
+    data = data.frame(x = c(2.33, 2.33), y = c(4, deflation_mean)),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  annotate("text", x = 2.73, y = (4 + deflation_mean) / 2,
+           label = "H1:P4", fontface = "bold") +
+  theme_minimal()
+
 
 (hyp1_listener +
   labs(title = "Collected") |
@@ -1004,49 +890,127 @@ hyp1_pred_listener <- hyp1_plot_listener(exp1_pred_listener_trials)
 
 We expect:
 
-- abnormal inflation in conjunction
-- abnormal deflation in disjunction
+- **H2:P1**: abnormal inflation in conjunction
+- **H2:P2**: abnormal deflation in disjunction
 
 ```{r hyp2-speaker}
 #| fig-cap: "E: 'The machine made sound A.' C: 'A [COLOUR] marble was released.' Colour ([COLOUR] = red or blue) is counterbalanced with the norm manipulation: assignment of the normal and abnormal condition to each colour is randomised across participants."
 
-hyp2_plot_speaker <- function(speaker_trials, valence_facet = FALSE) {
-  plot <- speaker_trials |>
-    ggplot(aes(x = mechanism, y = speaker_likelihood, fill = stat_normality)) +
-    stat_summary(
-      fun = mean,
-      geom = "col",
-      width = 0.7,
-      position = position_dodge(width = 0.7)
-    ) +
-    stat_summary(
-      fun.data = mean_se,
-      geom = "errorbar",
-      width = 0.2,
-      position = position_dodge(width = 0.7)
-    ) +
-    scale_fill_manual(values = c(CSP_colors[2], CSP_colors[4])) +
-    scale_y_continuous(breaks = 1:7) +
-    coord_cartesian(ylim = c(1, 7)) +
-    geom_hline(aes(yintercept = 4), linetype = 'dashed') +
-    labs(
-      x = 'Causal mechanism',
-      y = "Likelihood rating: 'E because C'",
-      fill = 'Statistical normality of C'
-    ) +
-    theme_minimal()
-  if (valence_facet) {
-    plot <- plot + facet_grid(effect_valence ~ .)
-  }
-  return(plot)
-}
+#   if (valence_facet) {
+#     plot <- plot + facet_grid(effect_valence ~ .)
+#   }
+#   return(plot)
+# }
 
-hyp2_speaker <- hyp2_plot_speaker(exp2_speaker_key_trials)
-hyp2_pred_speaker <- hyp2_plot_speaker(exp2_pred_speaker_trials)
+exp2_speaker_params <- expand_grid(
+  normality = c("normal", "abnormal"),
+  mechanism = c("conjunctive", "disjunctive"),
+  valence = c("pleasant", "neutral", "unpleasant")
+) |>
+  mutate(mean = 4, sd = 1) |>
+  mutate(
+    mean = mean +
+      case_when(
+        # abnormal inflation and deflation effects
+        normality == 'abnormal' & mechanism == 'conjunctive' ~ 1,
+        normality == 'abnormal' & mechanism == 'disjunctive' ~ -1,
+        .default = 0
+      )
+  ) |>
+  mutate(
+    mean = mean +
+      case_when(
+        # valence effects
+        normality == 'normal' & valence == 'pleasant' ~ 1.5,
+        normality == 'normal' & valence == 'unpleasant' ~ -1.5,
+        normality == 'abnormal' & valence == 'pleasant' ~ -1.5,
+        normality == 'abnormal' & valence == 'unpleasant' ~ 1.5,
+        .default = 0
+      )
+  )
+
+hyp2_speaker <- exp2_speaker_key_trials |>
+  ggplot(aes(x = mechanism, y = speaker_likelihood, fill = stat_normality)) +
+  stat_summary(
+    fun = mean,
+    geom = "col",
+    width = 0.7,
+    position = position_dodge(width = 0.7)
+  ) +
+  stat_summary(
+    fun.data = mean_se,
+    geom = "errorbar",
+    width = 0.2,
+    position = position_dodge(width = 0.7)
+  ) +
+  scale_fill_manual(values = c(CSP_colors[2], CSP_colors[4])) +
+  scale_y_continuous(breaks = 1:7) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  labs(
+    x = 'Causal mechanism',
+    y = "Likelihood rating: 'E because C'",
+    fill = 'Statistical normality of C'
+  ) +
+  theme_minimal()
+
+inflation_mean <- exp2_speaker_params |>
+  filter(mechanism == "conjunctive" & normality == "abnormal") |>
+  pull(mean) |>
+  mean()
+deflation_mean <- exp2_speaker_params |>
+  filter(mechanism == "disjunctive" & normality == "abnormal") |>
+  pull(mean) |>
+  mean()
+
+hyp2_pred_speaker <- exp2_speaker_params |>
+  filter("normality" != "abnormal") |>
+  ggplot(aes(x = mechanism, y = mean, fill = normality)) +
+  stat_summary(
+    fun = mean,
+    geom = "col",
+    width = 0.7,
+    position = position_dodge(width = 0.7)
+  ) +
+  scale_fill_manual(values = c(CSP_colors[2], "white")) +
+  scale_y_continuous(breaks = 4) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  labs(
+    x = 'Causal mechanism',
+    y = "Likelihood rating: 'E because C'",
+    fill = 'Statistical normality of C'
+  ) +
+  stat_brace(
+    data = data.frame(x = c(0.98, 0.98), y = c(4, inflation_mean)),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  annotate("text", x = 1.35, y = (4 + inflation_mean) / 2,
+           label = "H2:P1", fontface = "bold") +
+  stat_brace(
+    data = data.frame(x = c(1.98, 1.98), y = c(4, deflation_mean)),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  annotate("text", x = 2.35, y = (4 + deflation_mean) / 2,
+           label = "H2:P2", fontface = "bold") +
+  theme_minimal()
 
 (hyp2_speaker +
   labs(title = "Collected") |
-  hyp2_pred_speaker + labs(title = "Fictional") + fictional_transparency) +
+  hyp2_pred_speaker +
+    labs(title = "Fictional") +
+    fictional_transparency +
+    guides(fill = "none")) +
   plot_layout(guides = "collect") &
   theme(legend.position = "bottom")
 ```
@@ -1057,31 +1021,87 @@ hyp2_pred_speaker <- hyp2_plot_speaker(exp2_pred_speaker_trials)
 
 We expect:
 
-- Cause more likely to be statistically abnormal when mechanism is conjunctive
-- Cause more likely to be statistically normal when mechanism is disjunctive
+- **H2:P3**: Cause more likely to be statistically abnormal when mechanism is conjunctive
+- **H2:P4**: Cause more likely to be statistically normal when mechanism is disjunctive
 
 ```{r hyp2-listener}
 #| fig-cap: "Listener hears 'E because C' and infers whether C is statistically normal or abnormal."
 
-hyp2_plot_listener <- function(listener_trials, valence_facet = FALSE) {
-  plot <- listener_trials |>
-    ggplot(aes(x = mechanism, y = response)) +
-    stat_summary(fun = mean, geom = "col", width = 0.7, fill = CSP_colors[5]) +
-    stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
-    scale_y_continuous(breaks = 1:7) +
-    coord_cartesian(ylim = c(1, 7)) +
-    geom_hline(aes(yintercept = 4), linetype = 'dashed') +
-    ylab('Inference that selected cause is statistically abnormal') +
-    xlab('Causal mechanism') +
-    theme_minimal()
-  if (valence_facet) {
-    plot <- plot + facet_grid(effect_valence ~ .)
-  }
-  return(plot)
-}
+exp2_listener_params <- expand_grid(
+  mechanism = c("conjunctive", "disjunctive"),
+  valence = c("pleasant", "neutral", "unpleasant")
+) |>
+  mutate(mean = 4, sd = 1) |>
+  mutate(
+    mean = mean +
+      case_when(
+        mechanism == "conjunctive" ~ 1,
+        mechanism == "disjunctive" ~ -1
+      )
+  ) |>
+  mutate(
+    mean = mean +
+      case_when(
+        valence == "pleasant" ~ -1.5,
+        valence == "unpleasant" ~ 1.5,
+        .default = 0
+      )
+  )
 
-hyp2_listener <- hyp2_plot_listener(exp2_listener_key_trials)
-hyp2_pred_listener <- hyp2_plot_listener(exp2_pred_listener_trials)
+hyp2_listener <- exp2_listener_key_trials |>
+  ggplot(aes(x = mechanism, y = response)) +
+  stat_summary(fun = mean, geom = "col", width = 0.7, fill = CSP_colors[5]) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  scale_y_continuous(breaks = 1:7) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  ylab('Inference that selected cause is prescriptively abnormal') +
+  xlab('Causal mechanism') +
+  theme_minimal()
+
+
+inflation_mean <- exp2_listener_params |>
+  filter(mechanism == "conjunctive") |>
+  pull(mean) |>
+  mean()
+deflation_mean <- exp2_listener_params |>
+  filter(mechanism == "disjunctive") |>
+  pull(mean) |>
+  mean()
+
+hyp2_pred_listener <- exp2_listener_params |>
+  ggplot(aes(x = mechanism, y = mean)) +
+  stat_summary(fun = mean, geom = "col", width = 0.7, fill = CSP_colors[5]) +
+  scale_y_continuous(breaks = 4) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  ylab('Inference that selected cause is statistically abnormal') +
+  xlab('Causal mechanism') +
+  stat_brace(
+    data = data.frame(x = c(1.34, 1.34), y = c(4, inflation_mean)),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  annotate("text", x = 1.74, y = (4 + inflation_mean) / 2,
+           label = "H2:P3", fontface = "bold") +
+  scale_x_discrete(expand = expansion(add = c(0.6, 1))) +
+  stat_brace(
+    data = data.frame(x = c(2.34, 2.34), y = c(4, deflation_mean)),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  annotate("text", x = 2.73, y = (4 + deflation_mean) / 2,
+           label = "H2:P4", fontface = "bold") +
+  theme_minimal()
+
 
 (hyp2_listener +
   labs(title = "Collected") |
@@ -1098,72 +1118,486 @@ hyp2_pred_listener <- hyp2_plot_listener(exp2_pred_listener_trials)
 
 We expect:
 
--   in conjunction, due to the abnormal inflation effect: $SN+PN < SA+PN, SN+PA < SA+PA$
--   in disjuntion, due to the abnormal deflation effect: $SN+PN > SA+PN, SN+PA > SA+PA$\
+based on current literature we expect:
 
-```{r hyp3-speaker}
+- **H3:P1**: in conjunction, due to the abnormal inflation effect: $4 < [SA+PN]; 4 < [SN+PA], 4 < [SA+PA]$
+- **H3:P2**: in disjuntion, due to the abnormal deflation effect: $4 > [SA+PN]; 4 > [SN+PA]; 4 > [SA+PA]$
+
+assuming that the effect of abnormal inflation for both kind of norms is additive:
+
+- **H3:P3**:
+- **H3:P4**:
+- **H3:P5**:
+- **H3:P6**:
+- in conjunction, due to the abnormal inflation effect: $4 < [SA+PN], [SN+PA] < [SA+PA]$
+- in disjuntion, due to the abnormal deflation effect: $4 > [SA+PN], [SN+PA] > [SA+PA]$
+
+```{r hyp3-speaker-1}
 #| fig-cap: "SA - Statistically abnormal, SN - Statistically normal, PA - Prescriptively abnormal, PN - Prescriptively normal. E: 'The machine made sound A.' C: 'A [COLOUR] marble was released.' Colour ([COLOUR] = red or blue) is counterbalanced with the norm manipulation: assignment of the normal and abnormal condition to each colour is randomised across participants.  C is subject to both statistical and prescriptive norms."
 
-hyp3_plot_speaker <- function(speaker_trials, valence_facet = FALSE) {
-  plot <- speaker_trials |>
-    ggplot(aes(
-      x = interaction(stat_normality, presc_normality),
-      y = speaker_likelihood,
-      fill = interaction(stat_normality, presc_normality)
-    )) +
-    stat_summary(
-      fun = mean,
-      geom = "col",
-      width = 0.7
-    ) +
-    stat_summary(
-      fun.data = mean_se,
-      geom = "errorbar",
-      width = 0.2
-    ) +
-    scale_fill_manual(
-      values = c(CSP_colors[2], CSP_colors[3], CSP_colors[1], CSP_colors[4]),
-      labels = c(
-        "SA\nPA",
-        "SN\nPA",
-        "SA\nPN",
-        "SN\nPN"
-      )
-    ) +
-    scale_x_discrete(
-      labels = c(
-        "SA\nPA",
-        "SN\nPA",
-        "SA\nPN",
-        "SN\nPN"
-      )
-    ) +
-    scale_y_continuous(breaks = 1:7) +
-    coord_cartesian(ylim = c(1, 7)) +
-    geom_hline(aes(yintercept = 4), linetype = "dashed") +
-    labs(
-      x = "",
-      y = "Likelihood rating: 'E because C'",
-      fill = "Statistical × Prescriptive normality"
-    ) +
-    theme_minimal() +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1)
-    )
-  if (valence_facet) {
-    plot <- plot + facet_grid(effect_valence ~ mechanism)
-  } else {
-    plot <- plot + facet_grid(. ~ mechanism)
-  }
-  return(plot)
-}
+exp3_speaker_params_1 <- expand_grid(
+  presc_normality = c("normal", "abnormal"),
+  stat_normality = c("normal", "abnormal"),
+  mechanism = c("conjunctive", "disjunctive"),
+  valence = c("pleasant", "neutral", "unpleasant")
+) |>
+  mutate(mean = 4, sd = 1) |>
+  mutate(
+    mean = mean +
+      case_when(
+        mechanism == "conjunctive" &
+          presc_normality == "abnormal" &
+          stat_normality == "abnormal" ~ 1,
+        mechanism == "conjunctive" &
+          presc_normality == "abnormal" &
+          stat_normality == "normal" ~ 1,
+        mechanism == "conjunctive" &
+          presc_normality == "normal" &
+          stat_normality == "abnormal" ~ 1,
+        mechanism == "conjunctive" &
+          presc_normality == "normal" &
+          stat_normality == "normal" ~ 0,
 
-hyp3_speaker <- hyp3_plot_speaker(exp3_speaker_key_trials)
-hyp3_pred_speaker <- hyp3_plot_speaker(exp3_pred_speaker_trials)
+        mechanism == "disjunctive" &
+          presc_normality == "abnormal" &
+          stat_normality == "abnormal" ~ -1,
+        mechanism == "disjunctive" &
+          presc_normality == "abnormal" &
+          stat_normality == "normal" ~ -1,
+        mechanism == "disjunctive" &
+          presc_normality == "normal" &
+          stat_normality == "abnormal" ~ -1,
+        mechanism == "disjunctive" &
+          presc_normality == "normal" &
+          stat_normality == "normal" ~ 0,
+        .default = 0
+      )
+  )
+
+hyp3_speaker <- exp3_speaker_key_trials |>
+  ggplot(aes(
+    x = interaction(stat_normality, presc_normality),
+    y = speaker_likelihood,
+    fill = interaction(stat_normality, presc_normality)
+  )) +
+  stat_summary(
+    fun = mean,
+    geom = "col",
+    width = 0.7
+  ) +
+  stat_summary(
+    fun.data = mean_se,
+    geom = "errorbar",
+    width = 0.2
+  ) +
+  scale_fill_manual(
+    values = c(CSP_colors[2], CSP_colors[3], CSP_colors[1], CSP_colors[4]),
+    labels = c(
+      "SA\nPA",
+      "SN\nPA",
+      "SA\nPN",
+      "SN\nPN"
+    )
+  ) +
+  scale_x_discrete(
+    labels = c(
+      "SA\nPA",
+      "SN\nPA",
+      "SA\nPN",
+      "SN\nPN"
+    )
+  ) +
+  scale_y_continuous(breaks = 1:7) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = "dashed") +
+  labs(
+    x = "",
+    y = "Likelihood rating: 'E because C'",
+    fill = "Statistical × Prescriptive normality"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  facet_grid(. ~ mechanism) +
+  theme_minimal()
+
+
+inflation_mean <- exp3_speaker_params_1 |>
+  filter(
+    mechanism == "conjunctive" &
+      stat_normality == "abnormal" &
+      presc_normality == "abnormal"
+  ) |>
+  pull(mean) |>
+  mean()
+deflation_mean <- exp3_speaker_params_1 |>
+  filter(
+    mechanism == "disjunctive" &
+      stat_normality == "abnormal" &
+      presc_normality == "abnormal"
+  ) |>
+  pull(mean) |>
+  mean()
+
+hyp3_pred_speaker_1 <- exp3_speaker_params_1 |>
+  ggplot(aes(
+    x = interaction(stat_normality, presc_normality),
+    y = mean,
+    fill = interaction(stat_normality, presc_normality)
+  )) +
+  stat_summary(
+    fun = mean,
+    geom = "col",
+    width = 0.7
+  ) +
+  scale_fill_manual(
+    values = c(CSP_colors[2], CSP_colors[3], CSP_colors[1], "white"),
+    labels = c(
+      "SA\nPA",
+      "SN\nPA",
+      "SA\nPN",
+      ""
+    )
+  ) +
+  scale_x_discrete(
+    labels = c(
+      "SA\nPA",
+      "SN\nPA",
+      "SA\nPN",
+      ""
+    ),
+    expand = expansion(add = c(0.6, 1))
+  ) +
+  scale_y_continuous(breaks = 4) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = "dashed") +
+  labs(
+    x = "",
+    y = "Likelihood rating: 'E because C'",
+    fill = "Statistical × Prescriptive normality"
+  ) +
+  geom_segment(
+    data = data.frame(
+      mechanism = c("conjunctive", "disjunctive"),
+      x = c(0.6, 0.6),
+      xend = c(3.5, 3.5),
+      y = c(5, 3),
+      yend = c(5, 3)
+    ),
+    aes(x = x, xend = xend, y = y, yend = yend),
+    linetype = "dashed",
+    colour = "black",
+    inherit.aes = FALSE
+  ) +
+  facet_grid(. ~ mechanism) +
+  # Brace 1 — conjunctive facet
+  stat_brace(
+    data = data.frame(
+      mechanism = "conjunctive",
+      x = c(3.5, 3.5),
+      y = c(4, inflation_mean)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      mechanism = "conjunctive",
+      x = 4.4,
+      y = (4 + inflation_mean) / 2,
+      label = "H3:P1"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  # Brace 2 — disjunctive facet
+  stat_brace(
+    data = data.frame(
+      mechanism = "disjunctive",
+      x = c(3.5, 3.5),
+      y = c(4, deflation_mean)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      mechanism = "disjunctive",
+      x = 4.4,
+      y = (4 + deflation_mean) / 2,
+      label = "H3:P2"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  theme_minimal()
 
 (hyp3_speaker +
   labs(title = "Collected") |
-  hyp3_pred_speaker + labs(title = "Fictional") + fictional_transparency) +
+  hyp3_pred_speaker_1 +
+    labs(title = "Fictional") +
+    fictional_transparency +
+    guides(fill = "none")) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+
+```{r hyp3-speaker-2}
+
+exp3_speaker_params_2 <- expand_grid(
+  presc_normality = c("normal", "abnormal"),
+  stat_normality = c("normal", "abnormal"),
+  mechanism = c("conjunctive", "disjunctive"),
+  valence = c("pleasant", "neutral", "unpleasant")
+) |>
+  mutate(mean = 4, sd = 1) |>
+  mutate(
+    mean = mean +
+      case_when(
+        mechanism == "conjunctive" &
+          presc_normality == "abnormal" &
+          stat_normality == "abnormal" ~ 2,
+        mechanism == "conjunctive" &
+          presc_normality == "abnormal" &
+          stat_normality == "normal" ~ 1,
+        mechanism == "conjunctive" &
+          presc_normality == "normal" &
+          stat_normality == "abnormal" ~ 1,
+        mechanism == "conjunctive" &
+          presc_normality == "normal" &
+          stat_normality == "normal" ~ 0,
+
+        mechanism == "disjunctive" &
+          presc_normality == "abnormal" &
+          stat_normality == "abnormal" ~ -2,
+        mechanism == "disjunctive" &
+          presc_normality == "abnormal" &
+          stat_normality == "normal" ~ -1,
+        mechanism == "disjunctive" &
+          presc_normality == "normal" &
+          stat_normality == "abnormal" ~ -1,
+        mechanism == "disjunctive" &
+          presc_normality == "normal" &
+          stat_normality == "normal" ~ 0,
+        .default = 0
+      )
+  )
+
+inflation_mean_double_abnormal <- exp3_speaker_params_2 |>
+  filter(
+    mechanism == "conjunctive" &
+      stat_normality == "abnormal" &
+      presc_normality == "abnormal"
+  ) |>
+  pull(mean) |>
+  mean()
+inflation_mean <- exp3_speaker_params_2 |>
+  filter(
+    mechanism == "conjunctive" &
+      stat_normality == "abnormal" &
+      presc_normality == "normal"
+  ) |>
+  pull(mean) |>
+  mean()
+
+deflation_mean_double_abnormal <- exp3_speaker_params_2 |>
+  filter(
+    mechanism == "disjunctive" &
+      stat_normality == "abnormal" &
+      presc_normality == "abnormal"
+  ) |>
+  pull(mean) |>
+  mean()
+
+deflation_mean <- exp3_speaker_params_2 |>
+  filter(
+    mechanism == "disjunctive" &
+      stat_normality == "abnormal" &
+      presc_normality == "normal"
+  ) |>
+  pull(mean) |>
+  mean()
+
+hyp3_pred_speaker_2 <- exp3_speaker_params_2 |>
+  ggplot(aes(
+    x = interaction(stat_normality, presc_normality),
+    y = mean,
+    fill = interaction(stat_normality, presc_normality)
+  )) +
+  stat_summary(
+    fun = mean,
+    geom = "col",
+    width = 0.7
+  ) +
+  scale_fill_manual(
+    values = c(CSP_colors[2], CSP_colors[3], CSP_colors[1], "white"),
+    labels = c(
+      "SA\nPA",
+      "SN\nPA",
+      "SA\nPN",
+      ""
+    )
+  ) +
+  scale_x_discrete(
+    labels = c(
+      "SA\nPA",
+      "SN\nPA",
+      "SA\nPN",
+      ""
+    ),
+    expand = expansion(add = c(1.5, 1.3))
+  ) +
+  scale_y_continuous(breaks = 4) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = "dashed") +
+  labs(
+    x = "",
+    y = "Likelihood rating: 'E because C'",
+    fill = "Statistical × Prescriptive normality"
+  ) +
+  geom_segment(
+    data = data.frame(
+      mechanism = c("conjunctive", "disjunctive"),
+      x = c(1.5, 1.3),
+      xend = c(3.5, 3.5),
+      y = c(5, 3),
+      yend = c(5, 3)
+    ),
+    aes(x = x, xend = xend, y = y, yend = yend),
+    linetype = "dashed",
+    colour = "black",
+    inherit.aes = FALSE
+  ) +
+  geom_segment(
+    data = data.frame(
+      mechanism = c("conjunctive", "disjunctive"),
+      x = c(0.5, 0.5),
+      xend = c(2.5, 1.5),
+      y = c(6, 2),
+      yend = c(6, 2)
+    ),
+    aes(x = x, xend = xend, y = y, yend = yend),
+    linetype = "dashed",
+    colour = "black",
+    inherit.aes = FALSE
+  ) +
+  facet_grid(. ~ mechanism) +
+  # Brace 1 — conjunctive facet
+  stat_brace(
+    data = data.frame(
+      mechanism = "conjunctive",
+      x = c(3.5, 3.5),
+      y = c(4, inflation_mean)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      mechanism = "conjunctive",
+      x = 4.6,
+      y = (4 + inflation_mean) / 2,
+      label = "H3:P3"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  stat_brace(
+    data = data.frame(
+      mechanism = "conjunctive",
+      x = c(2.5, 2.5),
+      y = c(inflation_mean, inflation_mean_double_abnormal)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      mechanism = "conjunctive",
+      x = 3.6,
+      y = (inflation_mean + inflation_mean_double_abnormal) / 2,
+      label = "H3:P5"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  # Brace 2 — disjunctive facet
+  stat_brace(
+    data = data.frame(
+      mechanism = "disjunctive",
+      x = c(3.5, 3.5),
+      y = c(4, deflation_mean)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      mechanism = "disjunctive",
+      x = 4.6,
+      y = (4 + deflation_mean) / 2,
+      label = "H3:P4"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  stat_brace(
+    data = data.frame(
+      mechanism = "disjunctive",
+      x = c(1.3, 1.3),
+      y = c(deflation_mean, deflation_mean_double_abnormal)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 270,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      mechanism = "disjunctive",
+      x = 0.2,
+      y = (deflation_mean + deflation_mean_double_abnormal) / 2,
+      label = "H3:P6"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  theme_minimal()
+
+(hyp3_speaker +
+  labs(title = "Collected") |
+  hyp3_pred_speaker_2 +
+    labs(title = "Fictional") +
+    fictional_transparency +
+    guides(fill = "none")) +
   plot_layout(guides = "collect") &
   theme(legend.position = "bottom")
 ```
@@ -1172,62 +1606,349 @@ hyp3_pred_speaker <- hyp3_plot_speaker(exp3_pred_speaker_trials)
 
 `presc_normality ~ stat_normality * mechanism`
 
-We expect (both when cause is statistically abrnomal and normal):
+Our listener inference task in Exp3 now is something that can give evidence for going against existing literature and in support of the linear combination version of hyp 3.
 
-- Cause more likely to be prescriptively abnormal when mechanism is conjunctive
-- Cause more likely to be prescriptively normal when mechanism is disjunctive
+When we have statistical abnormality, we are focused on blue and red, between which we say speakers have no ordering in case 01. This would mean that a listener would not be able to use this for inference. Speakers likelihood rating would be inflated, but we can't say whether it was just due to the statistical abnormality or additionally due to prescriptive abnormality. We would expect both bars to be around 4.
 
+- **H3:P7**: both conjunction and disjunction bars are at 4.
 
-```{r hyp3-listener}
+When we have statistical normality, we are focused on green and yellow, between which there is an ordering. This is basically the same case as before, we have statistically normal event and what changes is that there is an additional prescriptive abnormality. We would expect standard pattern of inflation in conjunction and deflation in disjunction.
+
+- **H3:P8**: increased in conjunction
+- **H3:P9**: decreased in disjunction
+
+```{r hyp3-listener-1}
 #| fig-cap: "With the knowledge of statistical norm held by the speaker, the listener hears 'E because C' and infers whether C is prescriptively normal or abnormal."
-hyp3_plot_listener <- function(listener_trials, valence_facet = FALSE) {
-  plot <- listener_trials |>
-    ggplot(aes(x = mechanism, y = response)) +
-    stat_summary(fun = mean, geom = "col", width = 0.7, fill = CSP_colors[5]) +
-    stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
-    scale_fill_manual(
-      values = c(CSP_colors[2], CSP_colors[4])
-    ) +
-    scale_y_continuous(breaks = 1:7) +
-    coord_cartesian(ylim = c(1, 7)) +
-    geom_hline(aes(yintercept = 4), linetype = 'dashed') +
-    labs(
-      x = 'Causal mechanism',
-      y = 'Inference that selected cause is prescriptively abnormal'
-    ) +
-    theme_minimal()
-  if (valence_facet) {
-    plot <- plot +
-      facet_grid(
-        effect_valence ~ stat_normality,
-        labeller = labeller(
-          stat_normality = c(
-            normal = "Statistically normal",
-            abnormal = "Statistically abnormal"
-          )
-        )
-      )
-  } else {
-    plot <- plot +
-      facet_grid(
-        . ~ stat_normality,
-        labeller = labeller(
-          stat_normality = c(
-            normal = "Statistically normal",
-            abnormal = "Statistically abnormal"
-          )
-        )
-      )
-  }
-  return(plot)
-}
 
-hyp3_listener <- hyp3_plot_listener(exp3_listener_key_trials)
-hyp3_pred_listener <- hyp3_plot_listener(exp3_pred_listener_trials)
+exp3_listener_params_1 <- expand_grid(
+  stat_normality = c("normal", "abnormal"),
+  mechanism = c("conjunctive", "disjunctive"),
+  valence = c("pleasant", "neutral", "unpleasant")
+) |>
+  mutate(mean = 4, sd = 1) |>
+  mutate(
+    mean = mean +
+      case_when(
+        valence == "pleasant" ~ -1.5,
+        valence == "unpleasant" ~ 1.5,
+        .default = 0
+      )
+  ) |>
+  mutate(
+    mean = mean +
+      case_when(
+        (stat_normality == "normal" & mechanism == "conjunctive") ~ 1,
+        (stat_normality == "normal" & mechanism == "disjunctive") ~ -1,
+        .default = 0
+      )
+  )
+
+hyp3_listener <- exp3_listener_key_trials |>
+  ggplot(aes(x = mechanism, y = response)) +
+  stat_summary(fun = mean, geom = "col", width = 0.7, fill = CSP_colors[5]) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  scale_fill_manual(
+    values = c(CSP_colors[2], CSP_colors[4])
+  ) +
+  scale_y_continuous(breaks = 1:7) +
+  coord_cartesian(ylim = c(1, 7)) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  labs(
+    x = 'Causal mechanism',
+    y = 'Inference that selected cause is prescriptively abnormal'
+  ) +
+  theme_minimal() +
+  # if (valence_facet) {
+  #   plot <- plot +
+  #     facet_grid(
+  #       effect_valence ~ stat_normality,
+  #       labeller = labeller(
+  #         stat_normality = c(
+  #           normal = "Statistically normal",
+  #           abnormal = "Statistically abnormal"
+  #         )
+  #       )
+  #     )
+  # } else {
+  facet_grid(
+    . ~ stat_normality,
+    labeller = labeller(
+      stat_normality = c(
+        normal = "Statistically normal",
+        abnormal = "Statistically abnormal"
+      )
+    )
+  )
+
+hyp3_pred_listener_1 <- exp3_listener_params_1 |>
+  ggplot(aes(x = mechanism, y = mean)) +
+  stat_summary(fun = mean, geom = "col", width = 0.7, fill = CSP_colors[5]) +
+  scale_fill_manual(
+    values = c(CSP_colors[2], CSP_colors[4])
+  ) +
+  scale_y_continuous(breaks = 1:7) +
+  coord_cartesian(ylim = c(1, 7)) +
+  scale_x_discrete(expand = expansion(add = c(0, 1.3))) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  labs(
+    x = 'Causal mechanism',
+    y = 'Inference that selected cause is prescriptively abnormal'
+  ) +
+  theme_minimal() +
+  facet_grid(
+    . ~ stat_normality,
+    labeller = labeller(
+      stat_normality = c(
+        normal = "Statistically normal",
+        abnormal = "Statistically abnormal"
+      )
+    )
+  ) +
+  geom_segment(
+    data = data.frame(
+      stat_normality = "abnormal",
+      x = c(1, 2),
+      xend = c(1.5, 1.5),
+      y = c(4, 4),
+      yend = c(5, 5)
+    ),
+    aes(x = x, xend = xend, y = y, yend = yend),
+    # linetype = "dashed",
+    colour = "black",
+    linewidth = 0.7,
+    inherit.aes = FALSE
+  ) +
+  geom_text(
+    data = data.frame(
+      stat_normality = "abnormal",
+      x = 1.5 - 0.01,
+      y = 5.15,
+      label = "H3:P7"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  stat_brace(
+    data = data.frame(
+      stat_normality = "normal",
+      x = c(1.35, 1.35),
+      y = c(4, inflation_mean)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      stat_normality = "normal",
+      x = 1.95,
+      y = (4 + inflation_mean) / 2,
+      label = "H3:P8"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  stat_brace(
+    data = data.frame(
+      stat_normality = "normal",
+      x = c(2.35, 2.35),
+      y = c(deflation_mean, 4)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      stat_normality = "normal",
+      x = 2.95,
+      y = (deflation_mean + 4) / 2,
+      label = "H3:P9"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  )
 
 (hyp3_listener +
   labs(title = "Collected") |
-  hyp3_pred_listener + labs(title = "Fictional") + fictional_transparency) +
+  hyp3_pred_listener_1 + labs(title = "Fictional") + fictional_transparency) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+
+
+With statistical abnormality
+This is where a hypothesis that includes some kind of linear combination of the two normalities would show. Comparing blue and red, we expect speakers to rate red higher, and so we would expect the same, but stronger, pattern of inflation and deflation.
+
+- **H3:P10**: increase in conjunction
+- **H3:P11**: decrease in disjunction
+
+With statistical normality,
+Here the situation is exactly the same as above because this variant of hyp3 does not change anything about the relationship between green and yellow.
+
+- **H3:P8**: increased in conjunction
+- **H3:P9**: decreased in disjunction
+
+```{r hyp3-listener-2}
+
+exp3_listener_params_2 <- expand_grid(
+  stat_normality = c("normal", "abnormal"),
+  mechanism = c("conjunctive", "disjunctive"),
+  valence = c("pleasant", "neutral", "unpleasant")
+) |>
+  mutate(mean = 4, sd = 1) |>
+  mutate(
+    mean = mean +
+      case_when(
+        valence == "pleasant" ~ -1.5,
+        valence == "unpleasant" ~ 1.5,
+        .default = 0
+      )
+  ) |>
+  mutate(
+    mean = mean +
+      case_when(
+        (stat_normality == "normal" & mechanism == "conjunctive") ~ 1,
+        (stat_normality == "normal" & mechanism == "disjunctive") ~ -1,
+        (stat_normality == "abnormal" & mechanism == "conjunctive") ~ 1,
+        (stat_normality == "abnormal" & mechanism == "disjunctive") ~ -1,
+        .default = 0
+      )
+  )
+
+hyp3_pred_listener_2 <- exp3_listener_params_2 |>
+  ggplot(aes(x = mechanism, y = mean)) +
+  stat_summary(fun = mean, geom = "col", width = 0.7, fill = CSP_colors[5]) +
+  scale_fill_manual(
+    values = c(CSP_colors[2], CSP_colors[4])
+  ) +
+  scale_y_continuous(breaks = 1:7) +
+  coord_cartesian(ylim = c(1, 7)) +
+  scale_x_discrete(expand = expansion(add = c(0, 1.5))) +
+  geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+  labs(
+    x = 'Causal mechanism',
+    y = 'Inference that selected cause is prescriptively abnormal'
+  ) +
+  theme_minimal() +
+  facet_grid(
+    . ~ stat_normality,
+    labeller = labeller(
+      stat_normality = c(
+        normal = "Statistically normal",
+        abnormal = "Statistically abnormal"
+      )
+    )
+  ) +
+   stat_brace(
+    data = data.frame(
+      stat_normality = "normal",
+      x = c(1.35, 1.35),
+      y = c(4, inflation_mean)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      stat_normality = "normal",
+      x = 1.95,
+      y = (4 + inflation_mean) / 2,
+      label = "H3:P8"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  stat_brace(
+    data = data.frame(
+      stat_normality = "normal",
+      x = c(2.35, 2.35),
+      y = c(deflation_mean, 4)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      stat_normality = "normal",
+      x = 2.95,
+      y = (deflation_mean + 4) / 2,
+      label = "H3:P9"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  stat_brace(
+    data = data.frame(
+      stat_normality = "abnormal",
+      x = c(1.35, 1.35),
+      y = c(4, inflation_mean)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      stat_normality = "abnormal",
+      x = 2.05,
+      y = (4 + inflation_mean) / 2,
+      label = "H3:P10"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  stat_brace(
+    data = data.frame(
+      stat_normality = "abnormal",
+      x = c(2.35, 2.35),
+      y = c(deflation_mean, 4)
+    ),
+    aes(x = x, y = y),
+    width = 0.2,
+    rotate = 90,
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 0.7
+  ) +
+  geom_text(
+    data = data.frame(
+      stat_normality = "abnormal",
+      x = 3.05,
+      y = (deflation_mean + 4) / 2,
+      label = "H3:P11"
+    ),
+    aes(x = x, y = y, label = label),
+    fontface = "bold",
+    inherit.aes = FALSE
+  )
+
+(hyp3_listener +
+  labs(title = "Collected") |
+  hyp3_pred_listener_2 + labs(title = "Fictional") + fictional_transparency) +
   plot_layout(guides = "collect") &
   theme(legend.position = "bottom")
 ```
@@ -1249,74 +1970,74 @@ We expect:
 #| fig-height: 20
 #| fig-cap: "E: 'The machine made sound A.' C: 'A [COLOUR] marble was released.' Colour ([COLOUR] = red or blue) is counterbalanced with the norm manipulation: assignment of the normal and abnormal condition to each colour is randomised across participants. Data from Experiment 3 is collapsed over statistical normality of C, which was also manipulated in the experiment."
 
-hyp4_plot_speaker <- function(speaker_trials, x, xlab) {
-  plot <- speaker_trials |>
-    ggplot(aes(x = {{ x }}, y = speaker_likelihood, fill = {{ x }})) +
-    stat_summary(fun = mean, geom = "col", width = 0.7) +
-    stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
-    scale_y_continuous(breaks = 1:7) +
-    coord_cartesian(ylim = c(1, 7)) +
-    scale_fill_manual(
-      values = c(
-        "abnormal" = CSP_colors[2],
-        "normal" = CSP_colors[4]
-      )
-    ) +
-    geom_hline(aes(yintercept = 4), linetype = 'dashed') +
-    ylab("Likelihood rating: 'E because C'") +
-    xlab(xlab) +
-    theme_minimal() +
-    facet_grid(effect_valence ~ .)
-  return(plot)
-}
+# hyp4_plot_speaker <- function(speaker_trials, x, xlab) {
+#   plot <- speaker_trials |>
+#     ggplot(aes(x = {{ x }}, y = speaker_likelihood, fill = {{ x }})) +
+#     stat_summary(fun = mean, geom = "col", width = 0.7) +
+#     stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+#     scale_y_continuous(breaks = 1:7) +
+#     coord_cartesian(ylim = c(1, 7)) +
+#     scale_fill_manual(
+#       values = c(
+#         "abnormal" = CSP_colors[2],
+#         "normal" = CSP_colors[4]
+#       )
+#     ) +
+#     geom_hline(aes(yintercept = 4), linetype = 'dashed') +
+#     ylab("Likelihood rating: 'E because C'") +
+#     xlab(xlab) +
+#     theme_minimal() +
+#     facet_grid(effect_valence ~ .)
+#   return(plot)
+# }
 
-hyp4_exp1_speaker <- hyp4_plot_speaker(
-  exp1_speaker_key_trials,
-  presc_normality,
-  xlab = "Prescriptive normality of C"
-)
-hyp4_exp1_pred_speaker <- hyp4_plot_speaker(
-  exp1_pred_speaker_trials,
-  presc_normality,
-  xlab = "Prescriptive normality of C"
-)
+# hyp4_exp1_speaker <- hyp4_plot_speaker(
+#   exp1_speaker_key_trials,
+#   presc_normality,
+#   xlab = "Prescriptive normality of C"
+# )
+# hyp4_exp1_pred_speaker <- hyp4_plot_speaker(
+#   exp1_pred_speaker_trials,
+#   presc_normality,
+#   xlab = "Prescriptive normality of C"
+# )
 
-hyp4_exp2_speaker <- hyp4_plot_speaker(
-  exp2_speaker_key_trials,
-  stat_normality,
-  xlab = "Statistical normality of C"
-)
-hyp4_exp2_pred_speaker <- hyp4_plot_speaker(
-  exp2_pred_speaker_trials,
-  stat_normality,
-  xlab = "Statistical normality of C"
-)
+# hyp4_exp2_speaker <- hyp4_plot_speaker(
+#   exp2_speaker_key_trials,
+#   stat_normality,
+#   xlab = "Statistical normality of C"
+# )
+# hyp4_exp2_pred_speaker <- hyp4_plot_speaker(
+#   exp2_pred_speaker_trials,
+#   stat_normality,
+#   xlab = "Statistical normality of C"
+# )
 
-hyp4_exp3_speaker <- hyp4_plot_speaker(
-  exp3_speaker_key_trials,
-  presc_normality,
-  xlab = "Prescriptive normality of C"
-)
-hyp4_exp3_pred_speaker <- hyp4_plot_speaker(
-  exp3_pred_speaker_trials,
-  presc_normality,
-  xlab = "Prescriptive normality of C"
-)
+# hyp4_exp3_speaker <- hyp4_plot_speaker(
+#   exp3_speaker_key_trials,
+#   presc_normality,
+#   xlab = "Prescriptive normality of C"
+# )
+# hyp4_exp3_pred_speaker <- hyp4_plot_speaker(
+#   exp3_pred_speaker_trials,
+#   presc_normality,
+#   xlab = "Prescriptive normality of C"
+# )
 
-(((hyp4_exp1_speaker + labs(title = "Collected (Exp 1)")) |
-  (hyp4_exp1_pred_speaker +
-    labs(title = "Fictional (Exp 1)") +
-    fictional_transparency)) /
-  ((hyp4_exp2_speaker + labs(title = "Collected (Exp 2)")) |
-    (hyp4_exp2_pred_speaker +
-      labs(title = "Fictional (Exp 2)") +
-      fictional_transparency)) /
-  ((hyp4_exp3_speaker + labs(title = "Collected (Exp 3)")) |
-    (hyp4_exp3_pred_speaker +
-      labs(title = "Fictional (Exp 3)") +
-      fictional_transparency))) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
+# (((hyp4_exp1_speaker + labs(title = "Collected (Exp 1)")) |
+#   (hyp4_exp1_pred_speaker +
+#     labs(title = "Fictional (Exp 1)") +
+#     fictional_transparency)) /
+#   ((hyp4_exp2_speaker + labs(title = "Collected (Exp 2)")) |
+#     (hyp4_exp2_pred_speaker +
+#       labs(title = "Fictional (Exp 2)") +
+#       fictional_transparency)) /
+#   ((hyp4_exp3_speaker + labs(title = "Collected (Exp 3)")) |
+#     (hyp4_exp3_pred_speaker +
+#       labs(title = "Fictional (Exp 3)") +
+#       fictional_transparency))) +
+#   plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom")
 ```
 
 #### Listener
@@ -1355,44 +2076,44 @@ hyp4_plot_listener <- function(listener_trials, ylab) {
   return(plot)
 }
 
-hyp4_exp1_listener <- hyp4_plot_listener(
-  exp1_listener_key_trials,
-  ylab = "Inference that cause is prescriptively abnormal"
-)
-hyp4_exp1_pred_listener <- hyp4_plot_listener(
-  exp1_pred_listener_trials,
-  ylab = "Inference that cause is prescriptively abnormal"
-)
+# hyp4_exp1_listener <- hyp4_plot_listener(
+#   exp1_listener_key_trials,
+#   ylab = "Inference that cause is prescriptively abnormal"
+# )
+# hyp4_exp1_pred_listener <- hyp4_plot_listener(
+#   exp1_pred_listener_trials,
+#   ylab = "Inference that cause is prescriptively abnormal"
+# )
 
-hyp4_exp2_listener <- hyp4_plot_listener(
-  exp2_listener_key_trials,
-  ylab = "Inference that cause is statistically abnormal"
-)
-hyp4_exp2_pred_listener <- hyp4_plot_listener(
-  exp2_pred_listener_trials,
-  ylab = "Inference that cause is statistically abnormal"
-)
+# hyp4_exp2_listener <- hyp4_plot_listener(
+#   exp2_listener_key_trials,
+#   ylab = "Inference that cause is statistically abnormal"
+# )
+# hyp4_exp2_pred_listener <- hyp4_plot_listener(
+#   exp2_pred_listener_trials,
+#   ylab = "Inference that cause is statistically abnormal"
+# )
 
-hyp4_exp3_listener <- hyp4_plot_listener(exp3_listener_key_trials, ylab = "")
-hyp4_exp3_pred_listener <- hyp4_plot_listener(
-  exp3_pred_listener_trials,
-  ylab = ""
-)
+# hyp4_exp3_listener <- hyp4_plot_listener(exp3_listener_key_trials, ylab = "")
+# hyp4_exp3_pred_listener <- hyp4_plot_listener(
+#   exp3_pred_listener_trials,
+#   ylab = ""
+# )
 
-(((hyp4_exp1_listener + labs(title = "Collected (Exp 1)")) |
-  (hyp4_exp1_pred_listener +
-    labs(title = "Fictional (Exp 1)") +
-    fictional_transparency)) /
-  ((hyp4_exp2_listener + labs(title = "Collected (Exp 2)")) |
-    (hyp4_exp2_pred_listener +
-      labs(title = "Fictional (Exp 2)") +
-      fictional_transparency)) /
-  ((hyp4_exp3_listener + labs(title = "Collected (Exp 3)")) |
-    (hyp4_exp3_pred_listener +
-      labs(title = "Fictional (Exp 3)") +
-      fictional_transparency))) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
+# (((hyp4_exp1_listener + labs(title = "Collected (Exp 1)")) |
+#   (hyp4_exp1_pred_listener +
+#     labs(title = "Fictional (Exp 1)") +
+#     fictional_transparency)) /
+#   ((hyp4_exp2_listener + labs(title = "Collected (Exp 2)")) |
+#     (hyp4_exp2_pred_listener +
+#       labs(title = "Fictional (Exp 2)") +
+#       fictional_transparency)) /
+#   ((hyp4_exp3_listener + labs(title = "Collected (Exp 3)")) |
+#     (hyp4_exp3_pred_listener +
+#       labs(title = "Fictional (Exp 3)") +
+#       fictional_transparency))) +
+#   plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom")
 ```
 
 ### Hypothesis 5
@@ -1405,22 +2126,22 @@ hyp4_exp3_pred_listener <- hyp4_plot_listener(
 ```{r hyp1-speaker-valence}
 #| fig-cap: "E: 'The machine made sound A.' C: 'A [COLOUR] marble was released.' Colour ([COLOUR] = red or blue) is counterbalanced with the norm manipulation: assignment of the normal and abnormal condition to each colour is randomised across participants."
 
-hyp1_speaker_valence <- hyp1_plot_speaker(
-  exp1_speaker_key_trials,
-  valence_facet = TRUE
-)
-hyp1_pred_speaker_valence <- hyp1_plot_speaker(
-  exp1_pred_speaker_trials,
-  valence_facet = TRUE
-)
+# hyp1_speaker_valence <- hyp1_plot_speaker(
+#   exp1_speaker_key_trials,
+#   valence_facet = TRUE
+# )
+# hyp1_pred_speaker_valence <- hyp1_plot_speaker(
+#   exp1_pred_speaker_trials,
+#   valence_facet = TRUE
+# )
 
-(hyp1_speaker_valence +
-  labs(title = "Collected") |
-  hyp1_pred_speaker_valence +
-    labs(title = "Fictional") +
-    fictional_transparency) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
+# (hyp1_speaker_valence +
+#   labs(title = "Collected") |
+#   hyp1_pred_speaker_valence +
+#     labs(title = "Fictional") +
+#     fictional_transparency) +
+#   plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom")
 ```
 
 ##### Listener
@@ -1429,22 +2150,22 @@ hyp1_pred_speaker_valence <- hyp1_plot_speaker(
 ```{r hyp1-listener-valence}
 #| fig-cap: "Listener hears 'E because C' and infers whether C is prescriptively normal or abnormal."
 
-hyp1_listener_valence <- hyp1_plot_listener(
-  exp1_listener_key_trials,
-  valence_facet = TRUE
-)
-hyp1_pred_listener_valence <- hyp1_plot_listener(
-  exp1_pred_listener_trials,
-  valence_facet = TRUE
-)
+# hyp1_listener_valence <- hyp1_plot_listener(
+#   exp1_listener_key_trials,
+#   valence_facet = TRUE
+# )
+# hyp1_pred_listener_valence <- hyp1_plot_listener(
+#   exp1_pred_listener_trials,
+#   valence_facet = TRUE
+# )
 
-(hyp1_listener_valence +
-  labs(title = "Collected") |
-  hyp1_pred_listener_valence +
-    labs(title = "Fictional") +
-    fictional_transparency) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
+# (hyp1_listener_valence +
+#   labs(title = "Collected") |
+#   hyp1_pred_listener_valence +
+#     labs(title = "Fictional") +
+#     fictional_transparency) +
+#   plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom")
 ```
 
 #### Hyp2 w/ outcome valence
@@ -1455,22 +2176,22 @@ hyp1_pred_listener_valence <- hyp1_plot_listener(
 ```{r hyp2-speaker-valence}
 #| fig-cap: "E: 'The machine made sound A.' C: 'A [COLOUR] marble was released.' Colour ([COLOUR] = red or blue) is counterbalanced with the norm manipulation: assignment of the normal and abnormal condition to each colour is randomised across participants."
 
-hyp2_speaker_valence <- hyp2_plot_speaker(
-  exp2_speaker_key_trials,
-  valence_facet = TRUE
-)
-hyp2_pred_speaker_valence <- hyp2_plot_speaker(
-  exp2_pred_speaker_trials,
-  valence_facet = TRUE
-)
+# hyp2_speaker_valence <- hyp2_plot_speaker(
+#   exp2_speaker_key_trials,
+#   valence_facet = TRUE
+# )
+# hyp2_pred_speaker_valence <- hyp2_plot_speaker(
+#   exp2_pred_speaker_trials,
+#   valence_facet = TRUE
+# )
 
-(hyp2_speaker_valence +
-  labs(title = "Collected") |
-  hyp2_pred_speaker_valence +
-    labs(title = "Fictional") +
-    fictional_transparency) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
+# (hyp2_speaker_valence +
+#   labs(title = "Collected") |
+#   hyp2_pred_speaker_valence +
+#     labs(title = "Fictional") +
+#     fictional_transparency) +
+#   plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom")
 ```
 
 ##### Listener
@@ -1480,22 +2201,22 @@ hyp2_pred_speaker_valence <- hyp2_plot_speaker(
 ```{r hyp2-listener-valence}
 #| fig-cap: "Listener hears 'E because C' and infers whether C is statistically normal or abnormal."
 
-hyp2_listener_valence <- hyp2_plot_listener(
-  exp2_listener_key_trials,
-  valence_facet = TRUE
-)
-hyp2_pred_listener_valence <- hyp2_plot_listener(
-  exp2_pred_listener_trials,
-  valence_facet = TRUE
-)
+# hyp2_listener_valence <- hyp2_plot_listener(
+#   exp2_listener_key_trials,
+#   valence_facet = TRUE
+# )
+# hyp2_pred_listener_valence <- hyp2_plot_listener(
+#   exp2_pred_listener_trials,
+#   valence_facet = TRUE
+# )
 
-(hyp2_listener_valence +
-  labs(title = "Collected") |
-  hyp2_pred_listener_valence +
-    labs(title = "Fictional") +
-    fictional_transparency) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
+# (hyp2_listener_valence +
+#   labs(title = "Collected") |
+#   hyp2_pred_listener_valence +
+#     labs(title = "Fictional") +
+#     fictional_transparency) +
+#   plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom")
 ```
 
 #### Hyp3 w/ outcome valence
@@ -1507,22 +2228,22 @@ hyp2_pred_listener_valence <- hyp2_plot_listener(
 ```{r hyp3-speaker-valence}
 #| fig-cap: "SA - Statistically abnormal, SN - Statistically normal, PA - Prescriptively abnormal, PN - Prescriptively normal. E: 'The machine made sound A.' C: 'A [COLOUR] marble was released.' Colour ([COLOUR] = red or blue) is counterbalanced with the norm manipulation: assignment of the normal and abnormal condition to each colour is randomised across participants.  C is subject to both statistical and prescriptive norms."
 
-hyp3_speaker_valence <- hyp3_plot_speaker(
-  exp3_speaker_key_trials,
-  valence_facet = TRUE
-)
-hyp3_pred_speaker_valence <- hyp3_plot_speaker(
-  exp3_pred_speaker_trials,
-  valence_facet = TRUE
-)
+# hyp3_speaker_valence <- hyp3_plot_speaker(
+#   exp3_speaker_key_trials,
+#   valence_facet = TRUE
+# )
+# hyp3_pred_speaker_valence <- hyp3_plot_speaker(
+#   exp3_pred_speaker_trials,
+#   valence_facet = TRUE
+# )
 
-(hyp3_speaker_valence +
-  labs(title = "Collected") |
-  hyp3_pred_speaker_valence +
-    labs(title = "Fictional") +
-    fictional_transparency) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
+# (hyp3_speaker_valence +
+#   labs(title = "Collected") |
+#   hyp3_pred_speaker_valence +
+#     labs(title = "Fictional") +
+#     fictional_transparency) +
+#   plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom")
 ```
 
 ##### Listener
@@ -1532,78 +2253,23 @@ hyp3_pred_speaker_valence <- hyp3_plot_speaker(
 ```{r hyp3-listener-valence}
 #| fig-cap: "With the knowledge of statistical norm held by the speaker, the listener hears 'E because C' and infers whether C is prescriptively normal or abnormal."
 
-hyp3_listener_valence <- hyp3_plot_listener(
-  exp3_listener_key_trials,
-  valence_facet = TRUE
-)
-hyp3_pred_listener_valence <- hyp3_plot_listener(
-  exp3_pred_listener_trials,
-  valence_facet = TRUE
-)
+# hyp3_listener_valence <- hyp3_plot_listener(
+#   exp3_listener_key_trials,
+#   valence_facet = TRUE
+# )
+# hyp3_pred_listener_valence <- hyp3_plot_listener(
+#   exp3_pred_listener_trials,
+#   valence_facet = TRUE
+# )
 
-(hyp3_listener_valence +
-  labs(title = "Collected") |
-  hyp3_pred_listener_valence +
-    labs(title = "Fictional") +
-    fictional_transparency) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
+# (hyp3_listener_valence +
+#   labs(title = "Collected") |
+#   hyp3_pred_listener_valence +
+#     labs(title = "Fictional") +
+#     fictional_transparency) +
+#   plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom")
 ```
 
-## Simulated Data Visualisation Per Experiment
 
-### Experiment 1
-#### Speaker
-
-```{r exp1-speaker}
-#| label: fig-exp1-speaker
-((hyp1_pred_speaker + labs(title = "Hyp1")) |
-  (hyp4_exp1_pred_speaker + labs(title = "Hyp4")) |
-  (hyp1_pred_speaker_valence + labs(title = "Hyp5"))) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
-```
-
-#### Listener
-```{r exp1-listener}
-#| label: fig-exp1-listener
-((hyp1_pred_listener + labs(title = "Hyp1"))  |
-  (hyp4_exp1_pred_listener + labs(title = "Hyp4")) |
-  (hyp1_pred_listener_valence + labs(title = "Hyp5"))) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
-```
-
-### Experiment 2
-
-#### Speaker
-```{r exp2-speaker}
-#| label: fig-exp2-speaker
-((hyp2_pred_speaker + labs(title = "Hyp2")) |
-  (hyp4_exp2_pred_speaker + labs(title = "Hyp4")) |
-  (hyp2_pred_speaker_valence + labs(title = "Hyp5"))) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
-```
-
-#### Listener
-```{r exp2-listener}
-#| label: fig-exp2-listener
-((hyp2_pred_listener + labs(title = "Hyp2")) |
-  (hyp4_exp2_pred_listener + labs(title = "Hyp4")) |
-  (hyp2_pred_listener_valence + labs(title = "Hyp5"))) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
-```
-
-### Experiment 3
-
-#### Speaker
-```{r exp3-speaker}
-#| label: fig-exp3-speaker
-((hyp3_pred_speaker + labs(title = "Hyp3")) |
-  (hyp4_exp3_pred_speaker + labs(title = "Hyp4")) |
-  (hyp3_pred_speaker_valence + labs(title = "Hyp5"))) +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
-```
+## Statistical Analysis
